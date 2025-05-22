@@ -1,0 +1,45 @@
+# CMake build directories
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Visual Studio files
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.user
+*.VC.db
+*.VC.opendb
+
+# Compiled object files, libraries, executables
+*.obj
+*.o
+*.so
+*.dll
+*.exe
+*.lib
+*.pdb
+*.idb
+*.ilk
+
+# Log and temporary files
+*.log
+*.tmp
+*.tlog
+*.lastbuildstate
+*.recipe
+
+# MacOS files
+.DS_Store
+
+# Windows thumbnail cache
+Thumbs.db
+
+# Other IDEs
+*.idea/
+*.vscode/
+
+# Ignore crow, json, and other 3rd party build artifacts if any
+libs/*/build/
