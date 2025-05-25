@@ -6,61 +6,6 @@
 
 using json = nlohmann::json;
 
-// ====================
-// CORS Middleware
-// ====================
-
-struct CORS {
-    struct context {};
-
-    void before_handle(crow::request& req, crow::response& res, context&) {
-        /*res.add_header("Access-Control-Allow-Origin", "*");
-        res.add_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        res.add_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        res.add_header("Access-Control-Allow-Credentials", "true");
-        if (req.method == "OPTIONS"_method) {
-            res.code = 204;
-            res.end();
-        }*/
-    }
-    void after_handle(crow::request&, crow::response& res, context&) {
-        /*res.add_header("Access-Control-Allow-Origin", "*");
-        res.add_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        res.add_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        res.add_header("Access-Control-Allow-Credentials", "true");*/
-    }
-};
-
-// ====================
-// User-Folder Utilities
-// ====================
-
-std::string get_user_db_path(const std::string& user_id, const std::string& dbfile) {
-    std::string base = "db_root";
-    std::string folder = base + "/" + user_id;
-    fs::create_directories(folder);
-    return folder + "/" + dbfile;
-}
-
-std::vector<std::string> list_user_dbfiles(const std::string& user_id) {
-    std::vector<std::string> dbs;
-    std::string folder = "db_root/" + user_id;
-    if (!fs::exists(folder)) return dbs;
-    for (auto& entry : fs::directory_iterator(folder)) {
-        if (entry.is_regular_file()) dbs.push_back(entry.path().filename().string());
-    }
-    return dbs;
-}
-
-// Compose a unique key for the manager's servers map
-std::string server_key(const std::string& user_id, const std::string& dbfile) {
-    return user_id + "/" + dbfile;
-}
-
-// ====================
-// Helper Functions
-// ====================
-
 static int select_callback(void* data, int argc, char** argv, char** azColName) {
     auto* rows = static_cast<std::vector<json>*>(data);
     json row;
@@ -334,4 +279,3 @@ int main() {
 
     app.port(4000).multithreaded().run();
 }
-
