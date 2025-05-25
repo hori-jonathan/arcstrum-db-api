@@ -6,6 +6,29 @@
 
 using json = nlohmann::json;
 
+struct CORS {
+    struct context {};
+
+    void before_handle(crow::request& req, crow::response& res, context&) {
+        res.add_header("Access-Control-Allow-Origin", "https://console.arcstrum.com");
+        res.add_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.add_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.add_header("Access-Control-Allow-Credentials", "true");
+
+        if (req.method == "OPTIONS"_method) {
+            res.code = 204;
+            res.end();
+        }
+    }
+
+    void after_handle(crow::request&, crow::response& res, context&) {
+        res.add_header("Access-Control-Allow-Origin", "https://console.arcstrum.com");
+        res.add_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.add_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.add_header("Access-Control-Allow-Credentials", "true");
+    }
+};
+
 static int select_callback(void* data, int argc, char** argv, char** azColName) {
     auto* rows = static_cast<std::vector<json>*>(data);
     json row;
@@ -42,7 +65,7 @@ sqlite3* open_db(const char* dbfile, json& response) {
 }
 
 int main() {
-    crow::SimpleApp app;
+    crow::App<CORS> app;
 
     const char* dbfile = "mydb.sqlite";
 
