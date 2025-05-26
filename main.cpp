@@ -94,6 +94,33 @@ int main() {
             }
         });
 
+    CROW_ROUTE(app, "/list").methods("POST"_method)(
+        [](const crow::request& req) {
+            try {
+                auto body = json::parse(req.body);
+                std::string user_id = body.value("user_id", "");
+                if (user_id.empty()) return error_resp("Missing user_id");
+
+                std::string dir = "db_root/" + user_id;
+                json res;
+                std::vector<std::string> files;
+
+                if (fs::exists(dir)) {
+                    for (const auto& entry : fs::directory_iterator(dir)) {
+                        if (entry.is_regular_file()) {
+                            files.push_back(entry.path().filename().string());
+                        }
+                    }
+                }
+
+                res["files"] = files;
+                return crow::response(res.dump());
+            } catch (const std::exception& e) {
+                return error_resp(std::string("Exception: ") + e.what(), 500);
+            }
+        }
+    );
+
     // POST /query → SELECT only
     CROW_ROUTE(app, "/query").methods("POST"_method)(
         [](const crow::request& req) {
