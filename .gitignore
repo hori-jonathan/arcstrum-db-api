@@ -24,6 +24,7 @@ Makefile
 *.idb
 *.ilk
 *.bat
+*.py
 
 # Log and temporary files
 *.log

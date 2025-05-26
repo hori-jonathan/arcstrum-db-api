@@ -61,7 +61,9 @@ static int select_callback(void* data, int argc, char** argv, char** colNames) {
     auto* rows = static_cast<std::vector<json>*>(data);
     json row;
     for (int i = 0; i < argc; i++) {
-        row[colNames[i]] = argv[i] ? argv[i] : nullptr;
+        std::string key = colNames[i] ? colNames[i] : ("col" + std::to_string(i));
+        const char* val = argv[i] ? argv[i] : "";
+        row[key] = val;
     }
     rows->push_back(row);
     return 0;

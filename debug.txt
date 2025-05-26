@@ -1,0 +1,113 @@
+
+[1] GET /
+{
+  "status": "db-api online"
+}
+
+[2] POST /servers
+{
+  "path": "db_root/testuser/test.db",
+  "success": true
+}
+
+[3] POST /exec (create table)
+{
+  "success": true
+}
+
+[4] POST /insert_row
+{
+  "success": true
+}
+
+[5] POST /get_rows
+{
+  "rows": [
+    {
+      "id": "1",
+      "name": "Alice"
+    }
+  ]
+}
+
+[6] POST /list
+{
+  "files": [
+    "test.db"
+  ]
+}
+
+[7] GET /tables
+{
+  "tables": [
+    "__init__",
+    "mytable"
+  ]
+}
+
+[8] GET /table_schema
+{
+  "error": "Fatal server error: basic_string: construction from null is not valid"
+}
+
+[9] GET /column_info
+[Non-JSON] 500: 500 Internal Server Error
+
+
+[10] GET /table_preview
+{
+  "preview": [
+    {
+      "id": "1",
+      "name": "Alice"
+    }
+  ]
+}
+
+[11] POST /query
+{
+  "rows": [
+    {
+      "id": "1",
+      "name": "Alice"
+    }
+  ]
+}
+
+[12] POST /search
+{
+  "rows": [
+    {
+      "id": "1",
+      "name": "Alice"
+    }
+  ]
+}
+
+[13] POST /validate_sql
+{
+  "type": "SELECT",
+  "valid": true
+}
+
+[14] GET /db_stats
+{
+  "last_modified": -4689361562,
+  "size_bytes": 12288
+}
+
+[15] POST /rename_db
+{
+  "new_path": "db_root/testuser/renamed.db",
+  "success": true
+}
+
+[16] GET /download_db
+Downloaded to downloaded.db
+
+[17] POST /delete_db
+{
+  "success": true
+}
+
+✅ Test completed successfully.
