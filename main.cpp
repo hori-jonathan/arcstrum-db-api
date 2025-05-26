@@ -247,61 +247,70 @@ int main() {
         return crow::response(res.dump());
     });
 
-    // --- TABLE SCHEMA ---
-// --- TABLE SCHEMA ---
-CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& req) {
-    const char* user_id_c = req.url_params.get("user_id");
-    const char* db_file_c = req.url_params.get("db_file");
-    const char* table_c   = req.url_params.get("table");
+    CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& req) {
+    try {
+        const char* user_id_c = req.url_params.get("user_id");
+        const char* db_file_c = req.url_params.get("db_file");
+        const char* table_c   = req.url_params.get("table");
 
-    std::cerr << "[/table_schema] user_id=" << (user_id_c ? user_id_c : "null")
-              << ", db_file=" << (db_file_c ? db_file_c : "null")
-              << ", table=" << (table_c ? table_c : "null") << std::endl;
+        std::cerr << "[/table_schema] user_id=" << (user_id_c ? user_id_c : "null")
+                  << ", db_file=" << (db_file_c ? db_file_c : "null")
+                  << ", table=" << (table_c ? table_c : "null") << std::endl;
 
-    // 🚨 These checks must come BEFORE any std::string construction
-    if (!user_id_c || !db_file_c || !table_c)
-        return error_resp("Missing required parameters");
+        if (!user_id_c || !db_file_c || !table_c)
+            return error_resp("Missing required parameters");
 
-    std::string user_id(user_id_c);
-    std::string db_file(db_file_c);
-    std::string table(table_c);
+        std::string user_id(user_id_c);
+        std::string db_file(db_file_c);
+        std::string table(table_c);
 
-    if (table.empty())
-        return error_resp("Table name is empty");
+        if (table.empty())
+            return error_resp("Table name is empty");
 
-    std::string path = get_db_path(user_id, db_file);
-    json err;
-    sqlite3* db = open_db(path, err);
-    if (!db) return crow::response(500, err.dump());
+        std::string path = get_db_path(user_id, db_file);
+        std::cerr << "Path to DB: " << path << std::endl;
 
-    std::vector<json> cols;
-    std::string sql = "PRAGMA table_info('" + table + "');";
-    std::cerr << "Executing SQL: " << sql << std::endl;
+        json err;
+        sqlite3* db = open_db(path, err);
+        if (!db) return crow::response(500, err.dump());
 
-    char* errMsg = nullptr;
-    auto cb = [](void* data, int argc, char** argv, char** colNames) {
-        auto* list = static_cast<std::vector<json>*>(data);
-        json col;
-        for (int i = 0; i < argc; ++i)
-            col[colNames[i]] = argv[i] ? argv[i] : nullptr;
-        list->push_back(col);
-        return 0;
-    };
+        std::vector<json> cols;
+        std::string sql = "PRAGMA table_info('" + table + "');";
+        std::cerr << "Executing SQL: " << sql << std::endl;
 
-    int rc = sqlite3_exec(db, sql.c_str(), cb, &cols, &errMsg);
-    sqlite3_close(db);
+        char* errMsg = nullptr;
+        auto cb = [](void* data, int argc, char** argv, char** colNames) {
+            auto* list = static_cast<std::vector<json>*>(data);
+            json col;
+            for (int i = 0; i < argc; ++i)
+                col[colNames[i]] = argv[i] ? argv[i] : nullptr;
+            list->push_back(col);
+            return 0;
+        };
 
-    if (rc != SQLITE_OK) {
-        std::cerr << "SQLite error: " << (errMsg ? errMsg : "unknown") << std::endl;
-        std::string msg = errMsg ? errMsg : "SQL error";
-        sqlite3_free(errMsg);
-        return error_resp(msg);
+        int rc = sqlite3_exec(db, sql.c_str(), cb, &cols, &errMsg);
+        sqlite3_close(db);
+
+        if (rc != SQLITE_OK) {
+            std::cerr << "SQLite error: " << (errMsg ? errMsg : "unknown") << std::endl;
+            std::string msg = errMsg ? errMsg : "SQL error";
+            sqlite3_free(errMsg);
+            return error_resp(msg);
+        }
+
+        json res;
+        res["columns"] = cols;
+        return crow::response(res.dump());
+
+    } catch (const std::exception& e) {
+        std::cerr << "[/table_schema] Caught exception: " << e.what() << std::endl;
+        return error_resp(std::string("Fatal server error: ") + e.what(), 500);
+    } catch (...) {
+        std::cerr << "[/table_schema] Unknown uncaught exception" << std::endl;
+        return error_resp("Unknown fatal server error", 500);
     }
-
-    json res;
-    res["columns"] = cols;
-    return crow::response(res.dump());
 });
+
 
     // --- INSERT ROW ---
     CROW_ROUTE(app, "/insert_row").methods("POST"_method)([](const crow::request& req) {
