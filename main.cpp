@@ -4,6 +4,7 @@
 #include <sqlite3.h>
 #include <nlohmann/json.hpp>
 #include <filesystem>
+#include <fstream>
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -70,14 +71,14 @@ static int select_callback(void* data, int argc, char** argv, char** colNames) {
 int main() {
     crow::App<CORS> app;
 
-    // Health check
     CROW_ROUTE(app, "/")([] {
         return R"({"status":"db-api online"})";
     });
 
-    // POST /servers → open/init DB
-    CROW_ROUTE(app, "/servers").methods("POST"_method)(
-    [](const crow::request& req) {
+    // === All endpoints inlined below ===
+
+    // --- CREATE DB ---
+    CROW_ROUTE(app, "/servers").methods("POST"_method)([](const crow::request& req) {
         try {
             auto body = json::parse(req.body);
             std::string user_id = body.value("user_id", "");
@@ -86,13 +87,11 @@ int main() {
             if (user_id.empty() || db_file.empty())
                 return error_resp("Missing user_id or db_file");
 
-            std::string path = "db_root/" + user_id;
-            fs::create_directories(path);
-            std::string full_path = path + "/" + db_file;
+            std::string path = get_db_path(user_id, db_file);
+            fs::create_directories("db_root/" + user_id);
 
-            // Actually create the DB file by touching it with SQLite
             json dummy_response;
-            sqlite3* db = open_db(full_path, dummy_response);
+            sqlite3* db = open_db(path, dummy_response);
             if (!db) return crow::response(500, dummy_response.dump());
 
             const char* sql = R"(
@@ -111,112 +110,478 @@ int main() {
             }
 
             sqlite3_close(db);
-
             json res;
             res["success"] = true;
-            res["path"] = full_path;
+            res["path"] = path;
             return crow::response(res.dump());
 
         } catch (const std::exception& e) {
             return error_resp(std::string("Exception: ") + e.what(), 500);
         }
-    }
-);
+    });
 
-    CROW_ROUTE(app, "/list").methods("POST"_method)(
-        [](const crow::request& req) {
-            try {
-                auto body = json::parse(req.body);
-                std::string user_id = body.value("user_id", "");
-                if (user_id.empty()) return error_resp("Missing user_id");
+    // --- LIST DB FILES ---
+    CROW_ROUTE(app, "/list").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body.value("user_id", "");
+            if (user_id.empty()) return error_resp("Missing user_id");
 
-                std::string dir = "db_root/" + user_id;
-                json res;
-                std::vector<std::string> files;
+            std::string dir = "db_root/" + user_id;
+            json res;
+            std::vector<std::string> files;
 
-                if (fs::exists(dir)) {
-                    for (const auto& entry : fs::directory_iterator(dir)) {
-                        if (entry.is_regular_file()) {
-                            files.push_back(entry.path().filename().string());
-                        }
+            if (fs::exists(dir)) {
+                for (const auto& entry : fs::directory_iterator(dir)) {
+                    if (entry.is_regular_file()) {
+                        files.push_back(entry.path().filename().string());
                     }
                 }
-
-                res["files"] = files;
-                return crow::response(res.dump());
-            } catch (const std::exception& e) {
-                return error_resp(std::string("Exception: ") + e.what(), 500);
             }
+
+            res["files"] = files;
+            return crow::response(res.dump());
+        } catch (const std::exception& e) {
+            return error_resp(std::string("Exception: ") + e.what(), 500);
         }
-    );
+    });
 
-    // POST /query → SELECT only
-    CROW_ROUTE(app, "/query").methods("POST"_method)(
-        [](const crow::request& req) {
-            try {
-                auto body = json::parse(req.body);
-                std::string user_id = body.value("user_id", "");
-                std::string db_file = body.value("db_file", "");
-                std::string sql = body.value("sql", "");
-                if (user_id.empty() || db_file.empty() || sql.empty()) return error_resp("Missing parameters");
+    // --- QUERY (SELECT ONLY) ---
+    CROW_ROUTE(app, "/query").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body.value("user_id", "");
+            std::string db_file = body.value("db_file", "");
+            std::string sql = body.value("sql", "");
+            if (user_id.empty() || db_file.empty() || sql.empty()) return error_resp("Missing parameters");
 
-                if (sql.substr(0, 6) != "SELECT" && sql.substr(0, 6) != "select")
-                    return error_resp("Only SELECT queries allowed");
+            if (sql.substr(0, 6) != "SELECT" && sql.substr(0, 6) != "select")
+                return error_resp("Only SELECT queries allowed");
 
-                std::string path = get_db_path(user_id, db_file);
-                json err;
-                sqlite3* db = open_db(path, err);
-                if (!db) return crow::response(500, err.dump());
+            std::string path = get_db_path(user_id, db_file);
+            json err;
+            sqlite3* db = open_db(path, err);
+            if (!db) return crow::response(500, err.dump());
 
-                std::vector<json> rows;
-                char* errMsg = nullptr;
-                int rc = sqlite3_exec(db, sql.c_str(), select_callback, &rows, &errMsg);
-                sqlite3_close(db);
-                if (rc != SQLITE_OK) {
-                    std::string msg = errMsg ? errMsg : "SQL error";
-                    sqlite3_free(errMsg);
-                    return error_resp(msg);
-                }
-
-                json res;
-                res["rows"] = rows;
-                return crow::response(res.dump());
-            } catch (const std::exception& e) {
-                return error_resp(e.what(), 500);
+            std::vector<json> rows;
+            char* errMsg = nullptr;
+            int rc = sqlite3_exec(db, sql.c_str(), select_callback, &rows, &errMsg);
+            sqlite3_close(db);
+            if (rc != SQLITE_OK) {
+                std::string msg = errMsg ? errMsg : "SQL error";
+                sqlite3_free(errMsg);
+                return error_resp(msg);
             }
-        });
 
-    // POST /exec → Non-SELECT statements
-    CROW_ROUTE(app, "/exec").methods("POST"_method)(
-        [](const crow::request& req) {
-            try {
-                auto body = json::parse(req.body);
-                std::string user_id = body.value("user_id", "");
-                std::string db_file = body.value("db_file", "");
-                std::string sql = body.value("sql", "");
-                if (user_id.empty() || db_file.empty() || sql.empty()) return error_resp("Missing parameters");
+            json res;
+            res["rows"] = rows;
+            return crow::response(res.dump());
+        } catch (const std::exception& e) {
+            return error_resp(e.what(), 500);
+        }
+    });
 
-                std::string path = get_db_path(user_id, db_file);
-                json err;
-                sqlite3* db = open_db(path, err);
-                if (!db) return crow::response(500, err.dump());
+    // --- EXEC (NON-SELECT) ---
+    CROW_ROUTE(app, "/exec").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body.value("user_id", "");
+            std::string db_file = body.value("db_file", "");
+            std::string sql = body.value("sql", "");
+            if (user_id.empty() || db_file.empty() || sql.empty()) return error_resp("Missing parameters");
 
-                char* errMsg = nullptr;
-                int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
-                sqlite3_close(db);
-                if (rc != SQLITE_OK) {
-                    std::string msg = errMsg ? errMsg : "SQL error";
-                    sqlite3_free(errMsg);
-                    return error_resp(msg);
-                }
+            std::string path = get_db_path(user_id, db_file);
+            json err;
+            sqlite3* db = open_db(path, err);
+            if (!db) return crow::response(500, err.dump());
 
-                json res;
-                res["success"] = true;
-                return crow::response(res.dump());
-            } catch (const std::exception& e) {
-                return error_resp(e.what(), 500);
+            char* errMsg = nullptr;
+            int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
+            sqlite3_close(db);
+            if (rc != SQLITE_OK) {
+                std::string msg = errMsg ? errMsg : "SQL error";
+                sqlite3_free(errMsg);
+                return error_resp(msg);
             }
-        });
 
-    app.port(4000).multithreaded().run();
+            json res;
+            res["success"] = true;
+            return crow::response(res.dump());
+        } catch (const std::exception& e) {
+            return error_resp(e.what(), 500);
+        }
+    });
+
+    // --- TABLES ---
+    CROW_ROUTE(app, "/tables").methods("GET"_method)([](const crow::request& req) {
+        auto user_id = req.url_params.get("user_id");
+        auto db_file = req.url_params.get("db_file");
+        if (!user_id || !db_file)
+            return error_resp("Missing user_id or db_file");
+
+        std::string path = get_db_path(user_id, db_file);
+        json err;
+        sqlite3* db = open_db(path, err);
+        if (!db) return crow::response(500, err.dump());
+
+        std::vector<json> tables;
+        const char* sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';";
+        char* errMsg = nullptr;
+
+        auto cb = [](void* data, int argc, char** argv, char**) {
+            auto* list = static_cast<std::vector<json>*>(data);
+            if (argc > 0 && argv[0]) list->push_back(argv[0]);
+            return 0;
+        };
+
+        int rc = sqlite3_exec(db, sql, cb, &tables, &errMsg);
+        sqlite3_close(db);
+        if (rc != SQLITE_OK) {
+            std::string msg = errMsg ? errMsg : "SQL error";
+            sqlite3_free(errMsg);
+            return error_resp(msg);
+        }
+
+        json res;
+        res["tables"] = tables;
+        return crow::response(res.dump());
+    });
+
+    // --- TABLE SCHEMA ---
+    CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& req) {
+        auto user_id = req.url_params.get("user_id");
+        auto db_file = req.url_params.get("db_file");
+        auto table = req.url_params.get("table");
+        if (!user_id || !db_file || !table)
+            return error_resp("Missing user_id, db_file, or table");
+
+        std::string path = get_db_path(user_id, db_file);
+        json err;
+        sqlite3* db = open_db(path, err);
+        if (!db) return crow::response(500, err.dump());
+
+        std::vector<json> cols;
+        std::string sql = std::string("PRAGMA table_info(") + table + ");";
+        char* errMsg = nullptr;
+
+        auto cb = [](void* data, int argc, char** argv, char** colNames) {
+            auto* list = static_cast<std::vector<json>*>(data);
+            json col;
+            for (int i = 0; i < argc; ++i)
+                col[colNames[i]] = argv[i] ? argv[i] : nullptr;
+            list->push_back(col);
+            return 0;
+        };
+
+        int rc = sqlite3_exec(db, sql.c_str(), cb, &cols, &errMsg);
+        sqlite3_close(db);
+        if (rc != SQLITE_OK) {
+            std::string msg = errMsg ? errMsg : "SQL error";
+            sqlite3_free(errMsg);
+            return error_resp(msg);
+        }
+
+        json res;
+        res["columns"] = cols;
+        return crow::response(res.dump());
+    });
+
+    // --- INSERT ROW ---
+    CROW_ROUTE(app, "/insert_row").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body.value("user_id", "");
+            std::string db_file = body.value("db_file", "");
+            std::string table = body.value("table", "");
+            json row = body.value("row", json::object());
+            if (user_id.empty() || db_file.empty() || table.empty() || row.empty())
+                return error_resp("Missing required fields");
+
+            std::string sql = "INSERT INTO " + table + " (";
+            std::string values_clause = "VALUES (";
+            bool first = true;
+            for (auto it = row.begin(); it != row.end(); ++it) {
+                if (!first) {
+                    sql += ", ";
+                    values_clause += ", ";
+                }
+                sql += it.key();
+                values_clause += "'" + it.value().get<std::string>() + "'";
+                first = false;
+            }
+            sql += ") " + values_clause + ")";
+
+            std::string path = get_db_path(user_id, db_file);
+            json err;
+            sqlite3* db = open_db(path, err);
+            if (!db) return crow::response(500, err.dump());
+
+            char* errMsg = nullptr;
+            int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
+            sqlite3_close(db);
+            if (rc != SQLITE_OK) {
+                std::string msg = errMsg ? errMsg : "SQL error";
+                sqlite3_free(errMsg);
+                return error_resp(msg);
+            }
+
+            return crow::response(R"({"success":true})");
+        } catch (const std::exception& e) {
+            return error_resp(e.what(), 500);
+        }
+    });
+
+    // --- GET ROWS ---
+    CROW_ROUTE(app, "/get_rows").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body.value("user_id", "");
+            std::string db_file = body.value("db_file", "");
+            std::string table = body.value("table", "");
+            if (user_id.empty() || db_file.empty() || table.empty())
+                return error_resp("Missing required fields");
+
+            std::string sql = "SELECT * FROM " + table;
+            std::string path = get_db_path(user_id, db_file);
+            json err;
+            sqlite3* db = open_db(path, err);
+            if (!db) return crow::response(500, err.dump());
+
+            std::vector<json> rows;
+            char* errMsg = nullptr;
+            int rc = sqlite3_exec(db, sql.c_str(), select_callback, &rows, &errMsg);
+            sqlite3_close(db);
+            if (rc != SQLITE_OK) {
+                std::string msg = errMsg ? errMsg : "SQL error";
+                sqlite3_free(errMsg);
+                return error_resp(msg);
+            }
+
+            json res;
+            res["rows"] = rows;
+            return crow::response(res.dump());
+        } catch (const std::exception& e) {
+            return error_resp(e.what(), 500);
+        }
+    });
+
+    // --- RENAME DB ---
+    CROW_ROUTE(app, "/rename_db").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body.value("user_id", "");
+            std::string old_name = body.value("old_name", "");
+            std::string new_name = body.value("new_name", "");
+            if (user_id.empty() || old_name.empty() || new_name.empty())
+                return error_resp("Missing user_id or db file names");
+
+            std::string dir = "db_root/" + user_id;
+            fs::create_directories(dir);
+            std::string old_path = dir + "/" + old_name;
+            std::string new_path = dir + "/" + new_name;
+
+            if (!fs::exists(old_path)) return error_resp("Database not found", 404);
+            fs::rename(old_path, new_path);
+
+            json res;
+            res["success"] = true;
+            res["new_path"] = new_path;
+            return crow::response(res.dump());
+        } catch (const std::exception& e) {
+            return error_resp(std::string("Exception: ") + e.what(), 500);
+        }
+    });
+
+    // --- DELETE DB ---
+    CROW_ROUTE(app, "/delete_db").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body.value("user_id", "");
+            std::string db_file = body.value("db_file", "");
+            if (user_id.empty() || db_file.empty())
+                return error_resp("Missing user_id or db_file");
+
+            std::string path = get_db_path(user_id, db_file);
+            if (!fs::exists(path)) return error_resp("Database not found", 404);
+
+            fs::remove(path);
+
+            json res;
+            res["success"] = true;
+            return crow::response(res.dump());
+        } catch (const std::exception& e) {
+            return error_resp(std::string("Exception: ") + e.what(), 500);
+        }
+    });
+
+    // --- DOWNLOAD DB ---
+    CROW_ROUTE(app, "/download_db").methods("GET"_method)([](const crow::request& req) {
+        auto user_id = req.url_params.get("user_id");
+        auto db_file = req.url_params.get("db_file");
+        if (!user_id || !db_file)
+            return error_resp("Missing user_id or db_file");
+
+        std::string path = get_db_path(user_id, db_file);
+        if (!fs::exists(path)) return error_resp("Database file not found", 404);
+
+        std::ifstream in(path, std::ios::binary);
+        std::ostringstream ss;
+        ss << in.rdbuf();
+
+        crow::response res;
+        res.set_header("Content-Type", "application/octet-stream");
+        res.set_header("Content-Disposition", std::string("attachment; filename=") + db_file);
+        res.write(ss.str());
+        return res;
+    });
+
+    // --- DB STATS ---
+    CROW_ROUTE(app, "/db_stats").methods("GET"_method)([](const crow::request& req) {
+        auto user_id = req.url_params.get("user_id");
+        auto db_file = req.url_params.get("db_file");
+        if (!user_id || !db_file)
+            return error_resp("Missing user_id or db_file");
+
+        std::string path = get_db_path(user_id, db_file);
+        if (!fs::exists(path)) return error_resp("File not found", 404);
+
+        json res;
+        res["size_bytes"] = fs::file_size(path);
+        res["last_modified"] = std::chrono::duration_cast<std::chrono::seconds>(fs::last_write_time(path).time_since_epoch()).count();
+        return crow::response(res.dump());
+    });
+    // --- VALIDATE SQL ---
+    CROW_ROUTE(app, "/validate_sql").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string sql = body.value("sql", "");
+            if (sql.empty()) return error_resp("Missing SQL to validate");
+
+            bool is_select = sql.find("select") == 0 || sql.find("SELECT") == 0;
+            bool is_dml = sql.find("insert") == 0 || sql.find("update") == 0 || sql.find("delete") == 0;
+            json res;
+            res["type"] = is_select ? "SELECT" : (is_dml ? "DML" : "UNKNOWN");
+            res["valid"] = true;
+            return crow::response(res.dump());
+        } catch (...) {
+            return error_resp("Invalid JSON or SQL");
+        }
+    });
+
+    // --- TABLE PREVIEW ---
+    CROW_ROUTE(app, "/table_preview").methods("GET"_method)([](const crow::request& req) {
+        auto user_id = req.url_params.get("user_id");
+        auto db_file = req.url_params.get("db_file");
+        auto table = req.url_params.get("table");
+        int limit = req.url_params.get("limit") ? std::stoi(req.url_params.get("limit")) : 10;
+        if (!user_id || !db_file || !table)
+            return error_resp("Missing parameters");
+
+        std::string path = get_db_path(user_id, db_file);
+        json err;
+        sqlite3* db = open_db(path, err);
+        if (!db) return crow::response(500, err.dump());
+
+        std::string sql = "SELECT * FROM " + std::string(table) + " LIMIT " + std::to_string(limit);
+        std::vector<json> rows;
+        char* errMsg = nullptr;
+        int rc = sqlite3_exec(db, sql.c_str(), select_callback, &rows, &errMsg);
+        sqlite3_close(db);
+        if (rc != SQLITE_OK) {
+            std::string msg = errMsg ? errMsg : "SQL error";
+            sqlite3_free(errMsg);
+            return error_resp(msg);
+        }
+
+        json res;
+        res["preview"] = rows;
+        return crow::response(res.dump());
+    });
+
+    // --- COLUMN INFO ---
+    CROW_ROUTE(app, "/column_info").methods("GET"_method)([](const crow::request& req) {
+        auto user_id = req.url_params.get("user_id");
+        auto db_file = req.url_params.get("db_file");
+        auto table = req.url_params.get("table");
+        if (!user_id || !db_file || !table)
+            return error_resp("Missing parameters");
+
+        std::string path = get_db_path(user_id, db_file);
+        json err;
+        sqlite3* db = open_db(path, err);
+        if (!db) return crow::response(500, err.dump());
+
+        std::vector<json> info;
+        std::string sql = "PRAGMA table_info(" + std::string(table) + ")";
+        char* errMsg = nullptr;
+
+        auto cb = [](void* data, int argc, char** argv, char** colNames) {
+            auto* list = static_cast<std::vector<json>*>(data);
+            json col;
+            for (int i = 0; i < argc; ++i)
+                col[colNames[i]] = argv[i] ? argv[i] : nullptr;
+            list->push_back(col);
+            return 0;
+        };
+
+        int rc = sqlite3_exec(db, sql.c_str(), cb, &info, &errMsg);
+        sqlite3_close(db);
+        if (rc != SQLITE_OK) {
+            std::string msg = errMsg ? errMsg : "SQL error";
+            sqlite3_free(errMsg);
+            return error_resp(msg);
+        }
+
+        json res;
+        res["columns"] = info;
+        return crow::response(res.dump());
+    });
+
+    // --- SEARCH (simple filter query builder) ---
+    CROW_ROUTE(app, "/search").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body.value("user_id", "");
+            std::string db_file = body.value("db_file", "");
+            std::string table = body.value("table", "");
+            json filters = body.value("filters", json::array());
+
+            if (user_id.empty() || db_file.empty() || table.empty())
+                return error_resp("Missing required fields");
+
+            std::string sql = "SELECT * FROM " + table;
+            if (!filters.empty()) {
+                sql += " WHERE ";
+                bool first = true;
+                for (const auto& cond : filters) {
+                    if (!first) sql += " AND ";
+                    sql += cond["column"].get<std::string>() + " " + cond["op"].get<std::string>() + " '" + cond["value"].get<std::string>() + "'";
+                    first = false;
+                }
+            }
+
+            std::string path = get_db_path(user_id, db_file);
+            json err;
+            sqlite3* db = open_db(path, err);
+            if (!db) return crow::response(500, err.dump());
+
+            std::vector<json> rows;
+            char* errMsg = nullptr;
+            int rc = sqlite3_exec(db, sql.c_str(), select_callback, &rows, &errMsg);
+            sqlite3_close(db);
+            if (rc != SQLITE_OK) {
+                std::string msg = errMsg ? errMsg : "SQL error";
+                sqlite3_free(errMsg);
+                return error_resp(msg);
+            }
+
+            json res;
+            res["rows"] = rows;
+            return crow::response(res.dump());
+        } catch (const std::exception& e) {
+            return error_resp(e.what(), 500);
+        }
+    });
+
+    return app.port(4000).multithreaded().run(), 0;
 }
