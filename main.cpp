@@ -77,22 +77,51 @@ int main() {
 
     // POST /servers → open/init DB
     CROW_ROUTE(app, "/servers").methods("POST"_method)(
-        [](const crow::request& req) {
-            try {
-                auto body = json::parse(req.body);
-                std::string user_id = body.value("user_id", "");
-                std::string db_file = body.value("db_file", "");
-                if (user_id.empty() || db_file.empty()) return error_resp("Missing user_id or db_file");
+    [](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body.value("user_id", "");
+            std::string db_file = body.value("db_file", "");
 
-                std::string path = get_db_path(user_id, db_file);
-                json res;
-                res["ok"] = true;
-                res["path"] = path;
-                return crow::response(res.dump());
-            } catch (const std::exception& e) {
-                return error_resp(e.what(), 500);
+            if (user_id.empty() || db_file.empty())
+                return error_resp("Missing user_id or db_file");
+
+            std::string path = "db_root/" + user_id;
+            fs::create_directories(path);
+            std::string full_path = path + "/" + db_file;
+
+            // Actually create the DB file by touching it with SQLite
+            json dummy_response;
+            sqlite3* db = open_db(full_path, dummy_response);
+            if (!db) return crow::response(500, dummy_response.dump());
+
+            const char* sql = R"(
+                CREATE TABLE IF NOT EXISTS __init__ (id INTEGER);
+                INSERT INTO __init__ (id) VALUES (1);
+                DELETE FROM __init__ WHERE id = 1;
+            )";
+
+            char* errMsg = nullptr;
+            int rc = sqlite3_exec(db, sql, nullptr, nullptr, &errMsg);
+            if (rc != SQLITE_OK) {
+                std::string msg = errMsg ? errMsg : "SQL error";
+                sqlite3_free(errMsg);
+                sqlite3_close(db);
+                return error_resp(msg);
             }
-        });
+
+            sqlite3_close(db);
+
+            json res;
+            res["success"] = true;
+            res["path"] = full_path;
+            return crow::response(res.dump());
+
+        } catch (const std::exception& e) {
+            return error_resp(std::string("Exception: ") + e.what(), 500);
+        }
+    }
+);
 
     CROW_ROUTE(app, "/list").methods("POST"_method)(
         [](const crow::request& req) {
