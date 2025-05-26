@@ -69,6 +69,28 @@ static int select_callback(void* data, int argc, char** argv, char** colNames) {
     return 0;
 }
 
+// PATCHED: Safe column info callback
+static int safe_column_info_cb(void* data, int argc, char** argv, char** colNames) {
+    auto* list = static_cast<std::vector<json>*>(data);
+    json col;
+    for (int i = 0; i < argc; ++i) {
+        std::string key = colNames[i] ? colNames[i] : ("col" + std::to_string(i));
+        const char* val = argv[i] ? argv[i] : "";
+        col[key] = val;
+    }
+    list->push_back(col);
+    return 0;
+}
+
+// PATCHED: Fixed last_modified timestamp for /db_stats
+long long get_last_modified_safe(const fs::path& path) {
+    auto ftime = fs::last_write_time(path);
+    auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+        ftime - fs::file_time_type::clock::now() + std::chrono::system_clock::now()
+    );
+    return std::chrono::duration_cast<std::chrono::seconds>(sctp.time_since_epoch()).count();
+}
+
 // ======== Main ========
 int main() {
     crow::App<CORS> app;
@@ -281,17 +303,7 @@ int main() {
         std::cerr << "Executing SQL: " << sql << std::endl;
 
         char* errMsg = nullptr;
-        auto cb = [](void* data, int argc, char** argv, char** colNames) {
-        auto* list = static_cast<std::vector<json>*>(data);
-        json col;
-        for (int i = 0; i < argc; ++i) {
-            std::string key = colNames[i] ? colNames[i] : ("col" + std::to_string(i));
-            const char* val = argv[i] ? argv[i] : nullptr;
-            col[key] = val;
-        }
-        list->push_back(col);
-        return 0;
-    };
+        auto cb = safe_column_info_cb;
 
         int rc = sqlite3_exec(db, sql.c_str(), cb, &cols, &errMsg);
         sqlite3_close(db);
@@ -478,7 +490,7 @@ int main() {
 
         json res;
         res["size_bytes"] = fs::file_size(path);
-        res["last_modified"] = std::chrono::duration_cast<std::chrono::seconds>(fs::last_write_time(path).time_since_epoch()).count();
+        res["last_modified"] = get_last_modified_safe(path);
         return crow::response(res.dump());
     });
     // --- VALIDATE SQL ---
@@ -546,14 +558,7 @@ int main() {
         std::string sql = "PRAGMA table_info(" + std::string(table) + ")";
         char* errMsg = nullptr;
 
-        auto cb = [](void* data, int argc, char** argv, char** colNames) {
-            auto* list = static_cast<std::vector<json>*>(data);
-            json col;
-            for (int i = 0; i < argc; ++i)
-                col[colNames[i]] = argv[i] ? argv[i] : nullptr;
-            list->push_back(col);
-            return 0;
-        };
+        auto cb = safe_column_info_cb;
 
         int rc = sqlite3_exec(db, sql.c_str(), cb, &info, &errMsg);
         sqlite3_close(db);
