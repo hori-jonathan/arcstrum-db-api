@@ -254,6 +254,11 @@ CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& r
     const char* db_file_c = req.url_params.get("db_file");
     const char* table_c   = req.url_params.get("table");
 
+    std::cerr << "[/table_schema] user_id=" << (user_id_c ? user_id_c : "null")
+              << ", db_file=" << (db_file_c ? db_file_c : "null")
+              << ", table=" << (table_c ? table_c : "null") << std::endl;
+
+    // 🚨 These checks must come BEFORE any std::string construction
     if (!user_id_c || !db_file_c || !table_c)
         return error_resp("Missing required parameters");
 
@@ -271,8 +276,9 @@ CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& r
 
     std::vector<json> cols;
     std::string sql = "PRAGMA table_info('" + table + "');";
-    char* errMsg = nullptr;
+    std::cerr << "Executing SQL: " << sql << std::endl;
 
+    char* errMsg = nullptr;
     auto cb = [](void* data, int argc, char** argv, char** colNames) {
         auto* list = static_cast<std::vector<json>*>(data);
         json col;
@@ -286,6 +292,7 @@ CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& r
     sqlite3_close(db);
 
     if (rc != SQLITE_OK) {
+        std::cerr << "SQLite error: " << (errMsg ? errMsg : "unknown") << std::endl;
         std::string msg = errMsg ? errMsg : "SQL error";
         sqlite3_free(errMsg);
         return error_resp(msg);

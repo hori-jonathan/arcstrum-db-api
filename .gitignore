@@ -23,6 +23,7 @@ Makefile
 *.pdb
 *.idb
 *.ilk
+*.bat
 
 # Log and temporary files
 *.log
