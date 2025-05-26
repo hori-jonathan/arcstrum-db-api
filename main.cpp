@@ -248,13 +248,21 @@ int main() {
     });
 
     // --- TABLE SCHEMA ---
+// --- TABLE SCHEMA ---
 CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& req) {
-    auto user_id = req.url_params.get("user_id");
-    auto db_file = req.url_params.get("db_file");
-    auto table = req.url_params.get("table");
+    const char* user_id_c = req.url_params.get("user_id");
+    const char* db_file_c = req.url_params.get("db_file");
+    const char* table_c   = req.url_params.get("table");
 
-    if (!user_id || !db_file || !table || std::string(table).empty())
-        return error_resp("Missing or invalid parameters");
+    if (!user_id_c || !db_file_c || !table_c)
+        return error_resp("Missing required parameters");
+
+    std::string user_id(user_id_c);
+    std::string db_file(db_file_c);
+    std::string table(table_c);
+
+    if (table.empty())
+        return error_resp("Table name is empty");
 
     std::string path = get_db_path(user_id, db_file);
     json err;
@@ -262,9 +270,7 @@ CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& r
     if (!db) return crow::response(500, err.dump());
 
     std::vector<json> cols;
-
-    // ✅ Safe quoting of table name
-    std::string sql = "PRAGMA table_info('" + std::string(table) + "');";
+    std::string sql = "PRAGMA table_info('" + table + "');";
     char* errMsg = nullptr;
 
     auto cb = [](void* data, int argc, char** argv, char** colNames) {
