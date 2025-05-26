@@ -280,13 +280,16 @@ int main() {
 
         char* errMsg = nullptr;
         auto cb = [](void* data, int argc, char** argv, char** colNames) {
-            auto* list = static_cast<std::vector<json>*>(data);
-            json col;
-            for (int i = 0; i < argc; ++i)
-                col[colNames[i]] = argv[i] ? argv[i] : nullptr;
-            list->push_back(col);
-            return 0;
-        };
+        auto* list = static_cast<std::vector<json>*>(data);
+        json col;
+        for (int i = 0; i < argc; ++i) {
+            std::string key = colNames[i] ? colNames[i] : ("col" + std::to_string(i));
+            const char* val = argv[i] ? argv[i] : nullptr;
+            col[key] = val;
+        }
+        list->push_back(col);
+        return 0;
+    };
 
         int rc = sqlite3_exec(db, sql.c_str(), cb, &cols, &errMsg);
         sqlite3_close(db);
