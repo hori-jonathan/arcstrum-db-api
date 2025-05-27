@@ -573,7 +573,7 @@ CROW_ROUTE(app, "/status_history").methods("POST"_method)([](const crow::request
                 if (db_file.size() >= 6 && db_file.substr(db_file.size() - 6) == ".jsonl") {
                     db_file = db_file.substr(0, db_file.size() - 6);
                 }
-                if (!db_filter.empty() && db_file != db_filter) continue;
+                if (!db_filter.empty() && db_file != db_filter + ".jsonl") continue;
 
                 std::ifstream in(file_entry.path());
                 std::string line;

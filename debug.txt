@@ -124,7 +124,7 @@
 
 [14] GET /db_stats
 {
-  "last_modified": 1748309642,
+  "last_modified": 1748309908,
   "size_bytes": 8192
 }
 
@@ -324,6 +324,103 @@
       },
       "status": 200,
       "timestamp": 1748309651
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/exec",
+      "meta": {
+        "sql": "CREATE TABLE IF NOT EXISTS mytable (id INTEGER, name TEXT);"
+      },
+      "status": 200,
+      "timestamp": 1748309908
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/insert_row",
+      "meta": {
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309908
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/get_rows",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309909
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/tables",
+      "meta": {
+        "count": 1
+      },
+      "status": 200,
+      "timestamp": 1748309910
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/table_schema",
+      "meta": {
+        "columns": 2,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309910
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/column_info",
+      "meta": {
+        "columns": 2,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309911
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/table_preview",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309912
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/query",
+      "meta": {
+        "rows": 1,
+        "sql": "SELECT * FROM mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309914
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/search",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309915
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/db_stats",
+      "meta": {
+        "last_modified": 1748309908,
+        "size_bytes": 8192
+      },
+      "status": 200,
+      "timestamp": 1748309918
     }
   ]
 }
