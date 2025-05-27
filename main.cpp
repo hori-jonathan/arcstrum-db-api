@@ -97,7 +97,12 @@ void log_status(
     try {
         std::string log_dir = "status/" + user_id;
         fs::create_directories(log_dir);
-        std::string log_path = log_dir + "/" + db_file + ".jsonl";
+
+        // Optional: sanitize db_file name to prevent slashes
+        std::string safe_name = db_file;
+        std::replace(safe_name.begin(), safe_name.end(), '/', '_');
+
+        std::string log_path = log_dir + "/" + safe_name + ".jsonl";
 
         json entry = {
             {"timestamp", std::time(nullptr)},
@@ -504,6 +509,7 @@ CROW_ROUTE(app, "/search").methods("POST"_method)([](const crow::request& req) {
         return error_resp("Invalid JSON", 400);
     }
 });
+
 CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& req) {
     auto user_id = req.url_params.get("user_id");
     auto db_file = req.url_params.get("db_file");
@@ -531,6 +537,7 @@ CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& r
     log_status(user_id, db_file, "/table_schema", 200, {{"table", table}, {"columns", cols.size()}});
     return crow::response(json({{"columns", cols}}).dump());
 });
+
 CROW_ROUTE(app, "/status_history").methods("GET"_method)([](const crow::request& req) {
     auto user_id = req.url_params.get("user_id");
     auto db_file = req.url_params.get("db_file");
@@ -538,7 +545,10 @@ CROW_ROUTE(app, "/status_history").methods("GET"_method)([](const crow::request&
     if (!user_id || !db_file)
         return error_resp("Missing user_id or db_file");
 
-    std::string path = "status/" + std::string(user_id) + "/" + std::string(db_file) + ".jsonl";
+    std::string safe_name = db_file;
+    std::replace(safe_name.begin(), safe_name.end(), '/', '_');
+
+    std::string path = "status/" + std::string(user_id) + "/" + safe_name + ".jsonl";
     if (!fs::exists(path)) return error_resp("Status log not found", 404);
 
     std::ifstream in(path);
@@ -552,6 +562,7 @@ CROW_ROUTE(app, "/status_history").methods("GET"_method)([](const crow::request&
 
     return crow::response(json({{"history", entries}}).dump());
 });
+
 CROW_ROUTE(app, "/status_history").methods("POST"_method)([](const crow::request& req) {
     try {
         auto body = json::parse(req.body);
@@ -570,10 +581,7 @@ CROW_ROUTE(app, "/status_history").methods("POST"_method)([](const crow::request
             for (const auto& file_entry : fs::directory_iterator(user_entry.path())) {
                 if (!file_entry.is_regular_file()) continue;
                 std::string db_file = file_entry.path().filename().string();
-                if (db_file.size() >= 6 && db_file.substr(db_file.size() - 6) == ".jsonl") {
-                    db_file = db_file.substr(0, db_file.size() - 6);
-                }
-                if (!db_filter.empty() && db_file != db_filter + ".jsonl") continue;
+                if (!db_filter.empty() && db_file != db_filter) continue;
 
                 std::ifstream in(file_entry.path());
                 std::string line;
@@ -581,14 +589,13 @@ CROW_ROUTE(app, "/status_history").methods("POST"_method)([](const crow::request
                     try {
                         auto entry = json::parse(line);
                         if (since > 0 && entry["timestamp"].get<long>() < since) continue;
-                        if (!endpoint_filter.empty() && (!entry.contains("endpoint") || entry["endpoint"] != endpoint_filter)) continue;
+                        if (!endpoint_filter.empty() && entry["endpoint"] != endpoint_filter) continue;
                         results.push_back(entry);
                     } catch (...) {}
                 }
             }
         }
 
-        // Optional: sort by timestamp descending
         std::sort(results.begin(), results.end(), [](const json& a, const json& b) {
             return a["timestamp"].get<long>() > b["timestamp"].get<long>();
         });

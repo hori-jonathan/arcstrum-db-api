@@ -124,7 +124,7 @@
 
 [14] GET /db_stats
 {
-  "last_modified": 1748309908,
+  "last_modified": 1748310169,
   "size_bytes": 8192
 }
 
@@ -421,6 +421,200 @@
       },
       "status": 200,
       "timestamp": 1748309918
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/exec",
+      "meta": {
+        "sql": "CREATE TABLE IF NOT EXISTS mytable (id INTEGER, name TEXT);"
+      },
+      "status": 200,
+      "timestamp": 1748309997
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/insert_row",
+      "meta": {
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309997
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/get_rows",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309997
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/tables",
+      "meta": {
+        "count": 1
+      },
+      "status": 200,
+      "timestamp": 1748309998
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/table_schema",
+      "meta": {
+        "columns": 2,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309999
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/column_info",
+      "meta": {
+        "columns": 2,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310000
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/table_preview",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310001
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/query",
+      "meta": {
+        "rows": 1,
+        "sql": "SELECT * FROM mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310002
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/search",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310004
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/db_stats",
+      "meta": {
+        "last_modified": 1748309997,
+        "size_bytes": 8192
+      },
+      "status": 200,
+      "timestamp": 1748310006
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/exec",
+      "meta": {
+        "sql": "CREATE TABLE IF NOT EXISTS mytable (id INTEGER, name TEXT);"
+      },
+      "status": 200,
+      "timestamp": 1748310168
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/insert_row",
+      "meta": {
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310169
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/get_rows",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310169
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/tables",
+      "meta": {
+        "count": 1
+      },
+      "status": 200,
+      "timestamp": 1748310170
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/table_schema",
+      "meta": {
+        "columns": 2,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310170
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/column_info",
+      "meta": {
+        "columns": 2,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310172
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/table_preview",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310173
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/query",
+      "meta": {
+        "rows": 1,
+        "sql": "SELECT * FROM mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310174
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/search",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748310176
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/db_stats",
+      "meta": {
+        "last_modified": 1748310169,
+        "size_bytes": 8192
+      },
+      "status": 200,
+      "timestamp": 1748310178
     }
   ]
 }
