@@ -570,8 +570,8 @@ CROW_ROUTE(app, "/status_history").methods("POST"_method)([](const crow::request
             for (const auto& file_entry : fs::directory_iterator(user_entry.path())) {
                 if (!file_entry.is_regular_file()) continue;
                 std::string db_file = file_entry.path().filename().string();
-                if (db_file.ends_with(".jsonl")) {
-                    db_file = db_file.substr(0, db_file.size() - 6);  // remove .jsonl
+                if (db_file.size() >= 6 && db_file.substr(db_file.size() - 6) == ".jsonl") {
+                    db_file = db_file.substr(0, db_file.size() - 6);
                 }
                 if (!db_filter.empty() && db_file != db_filter) continue;
 
