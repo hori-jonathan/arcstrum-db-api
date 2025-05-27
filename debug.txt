@@ -47,12 +47,47 @@
 
 [8] GET /table_schema
 {
-  "error": "Fatal server error: basic_string: construction from null is not valid"
+  "columns": [
+    {
+      "cid": "0",
+      "dflt_value": "",
+      "name": "id",
+      "notnull": "0",
+      "pk": "0",
+      "type": "INTEGER"
+    },
+    {
+      "cid": "1",
+      "dflt_value": "",
+      "name": "name",
+      "notnull": "0",
+      "pk": "0",
+      "type": "TEXT"
+    }
+  ]
 }
 
 [9] GET /column_info
-[Non-JSON] 500: 500 Internal Server Error
-
+{
+  "columns": [
+    {
+      "cid": "0",
+      "dflt_value": "",
+      "name": "id",
+      "notnull": "0",
+      "pk": "0",
+      "type": "INTEGER"
+    },
+    {
+      "cid": "1",
+      "dflt_value": "",
+      "name": "name",
+      "notnull": "0",
+      "pk": "0",
+      "type": "TEXT"
+    }
+  ]
+}
 
 [10] GET /table_preview
 {
@@ -92,7 +127,7 @@
 
 [14] GET /db_stats
 {
-  "last_modified": -4689361271,
+  "last_modified": 1748303154,
   "size_bytes": 12288
 }
 
