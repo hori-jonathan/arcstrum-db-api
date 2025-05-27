@@ -510,6 +510,41 @@ CROW_ROUTE(app, "/search").methods("POST"_method)([](const crow::request& req) {
     }
 });
 
+CROW_ROUTE(app, "/usage_analytics").methods("GET"_method)([](const crow::request& req) {
+    auto user_id = req.url_params.get("user_id");
+    if (!user_id) return error_resp("Missing user_id");
+
+    std::string user_dir = std::string("status/") + user_id;
+    if (!fs::exists(user_dir)) return error_resp("User has no status data", 404);
+
+    std::map<std::string, std::map<std::string, int>> usage_per_db;
+
+    for (const auto& entry : fs::directory_iterator(user_dir)) {
+        if (!entry.is_regular_file()) continue;
+        std::string db_file = entry.path().filename().string();
+
+        std::ifstream in(entry.path());
+        std::string line;
+        while (std::getline(in, line)) {
+            try {
+                auto json_entry = json::parse(line);
+                long timestamp = json_entry.value("timestamp", 0);
+                std::time_t time = static_cast<std::time_t>(timestamp);
+                std::tm* tm_ptr = std::gmtime(&time);
+
+                // Format: YYYY-MM-DD
+                char buf[16];
+                std::strftime(buf, sizeof(buf), "%Y-%m-%d", tm_ptr);
+                std::string day = std::string(buf);
+
+                usage_per_db[db_file][day]++;
+            } catch (...) {}
+        }
+    }
+
+    return crow::response(json(usage_per_db).dump());
+});
+
 CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& req) {
     auto user_id = req.url_params.get("user_id");
     auto db_file = req.url_params.get("db_file");
