@@ -5,10 +5,8 @@
 }
 
 [2] POST /servers
-{
-  "path": "db_root/testuser/test.db",
-  "success": true
-}
+[Non-JSON] 404: 404 Not Found
+
 
 [3] POST /exec (create table)
 {
@@ -40,7 +38,6 @@
 [7] GET /tables
 {
   "tables": [
-    "__init__",
     "mytable"
   ]
 }
@@ -127,20 +124,225 @@
 
 [14] GET /db_stats
 {
-  "last_modified": 1748303154,
-  "size_bytes": 12288
+  "last_modified": 1748309642,
+  "size_bytes": 8192
 }
 
-[15] POST /rename_db
+[15] GET /status_history (GET single file)
+{
+  "history": [
+    {
+      "db": "test.db",
+      "endpoint": "/exec",
+      "meta": {
+        "sql": "CREATE TABLE IF NOT EXISTS mytable (id INTEGER, name TEXT);"
+      },
+      "status": 200,
+      "timestamp": 1748309568
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/insert_row",
+      "meta": {
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309569
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/get_rows",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309569
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/tables",
+      "meta": {
+        "count": 1
+      },
+      "status": 200,
+      "timestamp": 1748309570
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/table_schema",
+      "meta": {
+        "columns": 2,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309571
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/column_info",
+      "meta": {
+        "columns": 2,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309572
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/table_preview",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309573
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/query",
+      "meta": {
+        "rows": 1,
+        "sql": "SELECT * FROM mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309575
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/search",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309576
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/db_stats",
+      "meta": {
+        "last_modified": 1748309569,
+        "size_bytes": 8192
+      },
+      "status": 200,
+      "timestamp": 1748309579
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/exec",
+      "meta": {
+        "sql": "CREATE TABLE IF NOT EXISTS mytable (id INTEGER, name TEXT);"
+      },
+      "status": 200,
+      "timestamp": 1748309641
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/insert_row",
+      "meta": {
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309642
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/get_rows",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309642
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/tables",
+      "meta": {
+        "count": 1
+      },
+      "status": 200,
+      "timestamp": 1748309643
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/table_schema",
+      "meta": {
+        "columns": 2,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309643
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/column_info",
+      "meta": {
+        "columns": 2,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309644
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/table_preview",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309646
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/query",
+      "meta": {
+        "rows": 1,
+        "sql": "SELECT * FROM mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309647
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/search",
+      "meta": {
+        "rows": 1,
+        "table": "mytable"
+      },
+      "status": 200,
+      "timestamp": 1748309648
+    },
+    {
+      "db": "test.db",
+      "endpoint": "/db_stats",
+      "meta": {
+        "last_modified": 1748309642,
+        "size_bytes": 8192
+      },
+      "status": 200,
+      "timestamp": 1748309651
+    }
+  ]
+}
+
+[16] POST /status_history (admin-style search)
+{
+  "history": []
+}
+
+[17] POST /rename_db
 {
   "new_path": "db_root/testuser/renamed.db",
   "success": true
 }
 
-[16] GET /download_db
+[18] GET /download_db
 Downloaded to downloaded.db
 
-[17] POST /delete_db
+[19] POST /delete_db
 {
   "success": true
 }

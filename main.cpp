@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -569,6 +570,9 @@ CROW_ROUTE(app, "/status_history").methods("POST"_method)([](const crow::request
             for (const auto& file_entry : fs::directory_iterator(user_entry.path())) {
                 if (!file_entry.is_regular_file()) continue;
                 std::string db_file = file_entry.path().filename().string();
+                if (db_file.ends_with(".jsonl")) {
+                    db_file = db_file.substr(0, db_file.size() - 6);  // remove .jsonl
+                }
                 if (!db_filter.empty() && db_file != db_filter) continue;
 
                 std::ifstream in(file_entry.path());
@@ -577,7 +581,7 @@ CROW_ROUTE(app, "/status_history").methods("POST"_method)([](const crow::request
                     try {
                         auto entry = json::parse(line);
                         if (since > 0 && entry["timestamp"].get<long>() < since) continue;
-                        if (!endpoint_filter.empty() && entry["endpoint"] != endpoint_filter) continue;
+                        if (!endpoint_filter.empty() && (!entry.contains("endpoint") || entry["endpoint"] != endpoint_filter)) continue;
                         results.push_back(entry);
                     } catch (...) {}
                 }
