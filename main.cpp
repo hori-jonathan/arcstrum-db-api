@@ -183,6 +183,32 @@ int main() {
         }
     });
 
+    CROW_ROUTE(app, "/create_database").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body.value("user_id", "");
+            std::string db_file = body.value("db_file", "");
+            if (user_id.empty() || db_file.empty()) return error_resp("Missing user_id or db_file");
+
+            std::string path = get_db_path(user_id, db_file);
+            fs::create_directories("db_root/" + user_id);
+
+            std::ofstream new_db(path);
+            if (!new_db) return error_resp("Failed to create DB file", 500);
+            new_db.close();
+
+            json dummy_err;
+            sqlite3* db = open_db(path, dummy_err);
+            if (!db) return error_resp("SQLite init failed", 500);
+            sqlite3_close(db);
+
+            log_status(user_id, db_file, "/db/create_database", 200);
+            return crow::response(R"({"success":true})");
+        } catch (...) {
+            return error_resp("Invalid JSON or request", 400);
+        }
+    });
+
     CROW_ROUTE(app, "/exec").methods("POST"_method)([](const crow::request& req) {
         try {
             auto body = json::parse(req.body);
@@ -637,6 +663,39 @@ CROW_ROUTE(app, "/status_history").methods("POST"_method)([](const crow::request
 
         return crow::response(json({{"history", results}}).dump());
 
+    } catch (...) {
+        return error_resp("Invalid JSON or request", 400);
+    }
+});
+
+CROW_ROUTE(app, "/drop_table").methods("POST"_method)([](const crow::request& req) {
+    try {
+        auto body = json::parse(req.body);
+        std::string user_id = body["user_id"];
+        std::string db_file = body["db_file"];
+        std::string table = body["table"];
+
+        std::string sql = "DROP TABLE IF EXISTS " + table;
+
+        json err;
+        sqlite3* db = open_db(get_db_path(user_id, db_file), err);
+        if (!db) {
+            log_status(user_id, db_file, "/drop_table", 500, {{"table", table}});
+            return crow::response(500, err.dump());
+        }
+
+        char* errMsg = nullptr;
+        int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
+        sqlite3_close(db);
+
+        if (rc != SQLITE_OK) {
+            std::string msg = errMsg ? errMsg : "SQL error";
+            log_status(user_id, db_file, "/drop_table", 500, {{"table", table}});
+            return error_resp(msg);
+        }
+
+        log_status(user_id, db_file, "/drop_table", 200, {{"table", table}});
+        return crow::response(R"({"success":true})");
     } catch (...) {
         return error_resp("Invalid JSON or request", 400);
     }
