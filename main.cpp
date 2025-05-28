@@ -571,6 +571,46 @@ CROW_ROUTE(app, "/usage_analytics").methods("GET"_method)([](const crow::request
     return crow::response(json(usage_per_db).dump());
 });
 
+CROW_ROUTE(app, "/delete_row").methods("POST"_method)([](const crow::request& req) {
+    try {
+        auto body = json::parse(req.body);
+        std::string user_id = body["user_id"];
+        std::string db_file = body["db_file"];
+        std::string table = body["table"];
+        json row = body["row"];
+
+        if (row.empty()) return error_resp("Missing row data");
+
+        json err;
+        sqlite3* db = open_db(get_db_path(user_id, db_file), err);
+        if (!db) return crow::response(500, err.dump());
+
+        // Construct DELETE statement based on row's column values
+        std::string sql = "DELETE FROM " + table + " WHERE ";
+        bool first = true;
+        for (auto it = row.begin(); it != row.end(); ++it) {
+            if (!first) sql += " AND ";
+            sql += it.key() + " = '" + it.value().get<std::string>() + "'";
+            first = false;
+        }
+
+        char* errMsg = nullptr;
+        int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
+        sqlite3_close(db);
+
+        if (rc != SQLITE_OK) {
+            std::string msg = errMsg ? errMsg : "SQL error";
+            log_status(user_id, db_file, "/delete_row", 500, {{"sql", sql}});
+            return error_resp(msg);
+        }
+
+        log_status(user_id, db_file, "/delete_row", 200, {{"sql", sql}});
+        return crow::response(R"({"success":true})");
+    } catch (...) {
+        return error_resp("Invalid JSON or request", 400);
+    }
+});
+
 CROW_ROUTE(app, "/table_schema").methods("GET"_method)([](const crow::request& req) {
     auto user_id = req.url_params.get("user_id");
     auto db_file = req.url_params.get("db_file");
