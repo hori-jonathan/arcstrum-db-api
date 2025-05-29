@@ -87,6 +87,10 @@ long long get_last_modified_safe(const fs::path& path) {
     return std::chrono::duration_cast<std::chrono::seconds>(sctp.time_since_epoch()).count();
 }
 
+std::string get_meta_path(const std::string& user_id, const std::string& db_file) {
+    return "db_root/" + user_id + "/" + db_file + ".meta.json";
+}
+
 void log_status(
     const std::string& user_id,
     const std::string& db_file,
@@ -739,6 +743,69 @@ CROW_ROUTE(app, "/drop_table").methods("POST"_method)([](const crow::request& re
     } catch (...) {
         return error_resp("Invalid JSON or request", 400);
     }
+    CROW_ROUTE(app, "/get_metadata").methods("GET"_method)([](const crow::request& req) {
+        auto user_id = req.url_params.get("user_id");
+        auto db_file = req.url_params.get("db_file");
+
+        if (!user_id || !db_file)
+            return error_resp("Missing user_id or db_file");
+
+        std::string meta_path = get_meta_path(user_id, db_file);
+        if (!fs::exists(meta_path))
+            return error_resp("Metadata file not found", 404);
+
+        std::ifstream in(meta_path);
+        if (!in) return error_resp("Failed to read metadata", 500);
+
+        json meta;
+        try {
+            in >> meta;
+        } catch (...) {
+            return error_resp("Failed to parse metadata", 500);
+        }
+
+        return crow::response(meta.dump());
+    });
+    CROW_ROUTE(app, "/update_metadata").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body["user_id"];
+            std::string db_file = body["db_file"];
+            json metadata = body["metadata"];
+
+            std::string meta_path = get_meta_path(user_id, db_file);
+            fs::create_directories("db_root/" + user_id);
+
+            std::ofstream out(meta_path);
+            if (!out) return error_resp("Failed to write metadata", 500);
+            out << metadata.dump(2);  // Pretty print
+
+            log_status(user_id, db_file, "/update_metadata", 200, metadata);
+            return crow::response(R"({"success":true})");
+        } catch (...) {
+            return error_resp("Invalid JSON or request", 400);
+        }
+    });
+    CROW_ROUTE(app, "/delete_metadata").methods("POST"_method)([](const crow::request& req) {
+        try {
+            auto body = json::parse(req.body);
+            std::string user_id = body["user_id"];
+            std::string db_file = body["db_file"];
+
+            std::string meta_path = get_meta_path(user_id, db_file);
+            if (!fs::exists(meta_path)) {
+                log_status(user_id, db_file, "/delete_metadata", 404);
+                return error_resp("Metadata not found", 404);
+            }
+
+            fs::remove(meta_path);
+            log_status(user_id, db_file, "/delete_metadata", 200);
+            return crow::response(R"({"success":true})");
+        } catch (...) {
+            return error_resp("Invalid JSON or request", 400);
+        }
+    });
+
 });
 
     return app.port(4000).multithreaded().run(), 0;
