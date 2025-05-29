@@ -743,6 +743,7 @@ int main() {
         } catch (...) {
             return error_resp("Invalid JSON or request", 400);
         }
+    });
     CROW_ROUTE(app, "/get_metadata").methods("GET"_method)([](const crow::request& req) {
         auto user_id = req.url_params.get("user_id");
         auto db_file = req.url_params.get("db_file");
@@ -805,7 +806,6 @@ int main() {
             return error_resp("Invalid JSON or request", 400);
         }
     });
-});
 
     return app.port(4000).multithreaded().run(), 0;
 }
