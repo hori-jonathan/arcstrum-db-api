@@ -139,10 +139,12 @@ int main() {
             std::string dir = "db_root/" + user_id;
             std::vector<std::string> files;
 
-            if (fs::exists(dir)) {
-                for (const auto& entry : fs::directory_iterator(dir)) {
-                    if (entry.is_regular_file())
-                        files.push_back(entry.path().filename().string());
+            for (const auto& entry : fs::directory_iterator(dir)) {
+                if (entry.is_regular_file()) {
+                    std::string fname = entry.path().filename().string();
+                    if (fname.size() > 10 && fname.substr(fname.size() - 10) == ".meta.json")
+                        continue; // Skip metadata files
+                    files.push_back(fname);
                 }
             }
 
