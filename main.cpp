@@ -75,6 +75,9 @@ struct CORS {
             res.code = 204;
             res.end();
         }
+        for (const auto& [k, v] : req.headers) {
+            std::cerr << "[CORS][header] " << k << " = " << v << std::endl;
+        }
     }
     void after_handle(crow::request& req, crow::response& res, context&) {
         std::string origin = req.get_header_value("Origin");
@@ -86,6 +89,9 @@ struct CORS {
             res.set_header("Access-Control-Allow-Origin", origin);
             res.set_header("Vary", "Origin");
             res.set_header("Access-Control-Allow-Credentials", "true");
+        }
+        for (const auto& [k, v] : req.headers) {
+            std::cerr << "[CORS][header] " << k << " = " << v << std::endl;
         }
     }
 };
