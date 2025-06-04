@@ -13,6 +13,7 @@
 #include <curl/curl.h>
 #include <set>
 #include <iostream>
+#include "sqlite3.h"
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
