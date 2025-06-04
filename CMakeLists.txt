@@ -15,6 +15,7 @@ target_include_directories(db-api PRIVATE
     libs/json/single_include
     libs/asio/asio/include
     libs/sqlite
+    extern/jwt-cpp/include     # <-- ADD THIS LINE
 )
 
 if (UNIX AND NOT APPLE)
