@@ -60,6 +60,9 @@ struct CORS {
 
     void before_handle(crow::request& req, crow::response& res, context&) {
         std::string origin = req.get_header_value("Origin");
+        if (origin.empty()) {
+            origin = req.get_header_value("origin");
+        }
         std::cerr << "[CORS][before] " << req.url << " Origin: " << origin << std::endl;
         if (req.method == "OPTIONS"_method) {
             if (!origin.empty() && allowed_origins.count(origin)) {
@@ -75,6 +78,9 @@ struct CORS {
     }
     void after_handle(crow::request& req, crow::response& res, context&) {
         std::string origin = req.get_header_value("Origin");
+        if (origin.empty()) {
+            origin = req.get_header_value("origin");
+        }
         std::cerr << "[CORS][after] " << req.url << " Origin: " << origin << std::endl;
         if (!origin.empty() && allowed_origins.count(origin)) {
             res.set_header("Access-Control-Allow-Origin", origin);
