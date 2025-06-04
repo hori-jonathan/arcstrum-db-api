@@ -15,8 +15,11 @@ target_include_directories(db-api PRIVATE
     libs/json/single_include
     libs/asio/asio/include
     libs/sqlite
-    extern/jwt-cpp/include     # <-- ADD THIS LINE
+    extern/jwt-cpp/include
 )
+
+find_package(OpenSSL REQUIRED)
+target_link_libraries(db-api PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 
 if (UNIX AND NOT APPLE)
     target_link_libraries(db-api PRIVATE pthread)
