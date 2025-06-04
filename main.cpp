@@ -160,12 +160,6 @@ sqlite3* open_db(const std::string& path, json& error_out) {
     return db;
 }
 
-crow::response error_resp(const std::string& msg, int code = 400) {
-    json err;
-    err["error"] = msg;
-    return crow::response(code, err.dump());
-}
-
 static int select_callback(void* data, int argc, char** argv, char** colNames) {
     auto* rows = static_cast<std::vector<json>*>(data);
     json row;
