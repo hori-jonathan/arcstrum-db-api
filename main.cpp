@@ -262,6 +262,13 @@ int main() {
             std::string dir = "db_root/" + user_id;
             std::vector<std::string> files;
 
+            // Add this block:
+            if (!fs::exists(dir)) {
+                // Optional: fs::create_directories(dir); // Uncomment to auto-create
+                // Always return empty list if dir doesn't exist
+                return crow::response(json({{"files", json::array()}}).dump());
+            }
+
             for (const auto& entry : fs::directory_iterator(dir)) {
                 if (entry.is_regular_file()) {
                     std::string fname = entry.path().filename().string();
