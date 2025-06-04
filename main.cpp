@@ -83,7 +83,7 @@ struct CORS {
 };
 
 
-const std::string DATA_ROOT = "../arcstrum-auth-api/Auth/user-auths";
+const std::string ALLOWED_ORIGINS_FILE = "allowed-origins.json";
 const std::string USER_AUTH_MAP = "../arcstrum-auth-api/Auth/user-auths-map"; // Directory
 const std::string GLOBAL_CONFIG = "../arcstrum-auth-api/Auth/arcstrum/global-config.json";
 const std::string SECRET = "arcstrum_secret_key";
