@@ -1,35 +1,145 @@
 #define CROW_MAIN
 #define ASIO_STANDALONE
+
 #include "crow.h"
-#include <sqlite3.h>
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <algorithm>
+#include <ctime>
+#include <random>
+#include <jwt-cpp/jwt.h>
+#include <curl/curl.h>
+#include <set>
+#include <iostream>
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-// ======== CORS Middleware ========
+// Path to allowed origins config
+const std::string ALLOWED_ORIGINS_FILE = "Auth/arcstrum/allowed-origins.json";
+
+// Global cache of allowed origins
+std::set<std::string> allowed_origins;
+
+// Helper: Load allowed origins from JSON file
+void reload_allowed_origins() {
+    try {
+        std::ifstream f(ALLOWED_ORIGINS_FILE);
+        if (!f) return;
+        json j; f >> j;
+        allowed_origins.clear();
+        for (const auto& o : j["origins"]) allowed_origins.insert(o.get<std::string>());
+    } catch (...) {}
+}
+
+// Helper: Add a new origin
+bool add_allowed_origin(const std::string& origin) {
+    reload_allowed_origins();
+    if (allowed_origins.count(origin)) return false;
+    allowed_origins.insert(origin);
+    // Update the file
+    json j;
+    j["origins"] = json::array();
+    for (const auto& o : allowed_origins) j["origins"].push_back(o);
+    std::ofstream f(ALLOWED_ORIGINS_FILE);
+    f << j.dump(2);
+    return true;
+}
+
+void print_allowed_origins() {
+    std::cerr << "[CORS] Allowed origins: ";
+    for (const auto& o : allowed_origins) std::cerr << o << ", ";
+    std::cerr << "\n";
+}
+
 struct CORS {
     struct context {};
+
     void before_handle(crow::request& req, crow::response& res, context&) {
-        res.add_header("Access-Control-Allow-Origin", "https://console.arcstrum.com");
-        res.add_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        res.add_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        res.add_header("Access-Control-Allow-Credentials", "true");
         if (req.method == "OPTIONS"_method) {
+            std::string origin = req.get_header_value("Origin");
+            if (!origin.empty() && allowed_origins.count(origin)) {
+                res.set_header("Access-Control-Allow-Origin", origin);
+                res.set_header("Vary", "Origin");
+            }
+            res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            res.set_header("Access-Control-Allow-Credentials", "true");
             res.code = 204;
             res.end();
         }
     }
-    void after_handle(crow::request&, crow::response& res, context&) {
-        res.add_header("Access-Control-Allow-Origin", "https://console.arcstrum.com");
-        res.add_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        res.add_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        res.add_header("Access-Control-Allow-Credentials", "true");
+    void after_handle(crow::request& req, crow::response& res, context&) {
+        std::string origin = req.get_header_value("Origin");
+        if (!origin.empty() && allowed_origins.count(origin)) {
+            res.set_header("Access-Control-Allow-Origin", origin); // REPLACE, DO NOT ADD!
+            res.set_header("Vary", "Origin");
+            res.set_header("Access-Control-Allow-Credentials", "true");
+        }
     }
 };
+
+
+const std::string DATA_ROOT = "../arcstrum-auth-api/Auth/user-auths";
+const std::string USER_AUTH_MAP = "../arcstrum-auth-api/Auth/user-auths-map"; // Directory
+const std::string GLOBAL_CONFIG = "../arcstrum-auth-api/Auth/arcstrum/global-config.json";
+const std::string SECRET = "arcstrum_secret_key";
+
+// ============ HELPERS ============
+
+std::string rand_id(size_t len = 16) {
+    static const char chars[] = "abcdefghijklmnopqrstuvwxyz0123456789";
+    static thread_local std::mt19937 gen{std::random_device{}()};
+    std::string s(len, ' ');
+    for (size_t i = 0; i < len; ++i)
+        s[i] = chars[gen() % (sizeof(chars) - 1)];
+    return s;
+}
+
+std::string jwt_token(const std::string& user_id, const std::string& auth_id, int expires_in_sec = 24*3600) {
+    auto now = std::chrono::system_clock::now();
+    return jwt::create()
+        .set_issuer(auth_id)
+        .set_subject(user_id)
+        .set_issued_at(now)
+        .set_expires_at(now + std::chrono::seconds{expires_in_sec})
+        .sign(jwt::algorithm::hs256{SECRET});
+}
+
+std::string now_str() {
+    std::time_t now = std::time(nullptr);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%FT%TZ", std::gmtime(&now));
+    return buf;
+}
+
+bool read_json(const fs::path& p, json& j) {
+    try {
+        std::ifstream f(p);
+        if (!f) return false;
+        f >> j;
+        return true;
+    } catch (...) { return false; }
+}
+
+bool write_json(const fs::path& p, const json& j) {
+    try {
+        std::ofstream f(p);
+        f << j.dump(2);
+        return true;
+    } catch (...) { return false; }
+}
+
+crow::response error_resp(const std::string& m, int c = 400) {
+    json e; e["error"] = m;
+    return crow::response(c, e.dump());
+}
+
+std::string base_dir(const std::string& auth_id) {
+    return DATA_ROOT + "/" + auth_id;
+}
 
 // ======== Helpers ========
 std::string get_db_path(const std::string& user_id, const std::string& db_file) {
