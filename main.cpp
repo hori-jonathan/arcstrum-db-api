@@ -59,8 +59,9 @@ struct CORS {
     struct context {};
 
     void before_handle(crow::request& req, crow::response& res, context&) {
+        std::string origin = req.get_header_value("Origin");
+        std::cerr << "[CORS][before] " << req.url << " Origin: " << origin << std::endl;
         if (req.method == "OPTIONS"_method) {
-            std::string origin = req.get_header_value("Origin");
             if (!origin.empty() && allowed_origins.count(origin)) {
                 res.set_header("Access-Control-Allow-Origin", origin);
                 res.set_header("Vary", "Origin");
@@ -74,8 +75,9 @@ struct CORS {
     }
     void after_handle(crow::request& req, crow::response& res, context&) {
         std::string origin = req.get_header_value("Origin");
+        std::cerr << "[CORS][after] " << req.url << " Origin: " << origin << std::endl;
         if (!origin.empty() && allowed_origins.count(origin)) {
-            res.set_header("Access-Control-Allow-Origin", origin); // REPLACE, DO NOT ADD!
+            res.set_header("Access-Control-Allow-Origin", origin);
             res.set_header("Vary", "Origin");
             res.set_header("Access-Control-Allow-Credentials", "true");
         }
@@ -235,7 +237,7 @@ int main() {
         return R"({"status":"db-api online"})";
     });
 
-    CROW_ROUTE(app, "/db/list").methods("POST"_method)([](const crow::request& req) {
+    CROW_ROUTE(app, "/list").methods("POST"_method)([](const crow::request& req) {
         try {
             auto body = json::parse(req.body);
             std::string user_id = body.value("user_id", "");
