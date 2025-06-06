@@ -16,6 +16,7 @@ target_include_directories(db-api PRIVATE
     libs/asio/asio/include
     libs/sqlite
     extern/jwt-cpp/include
+    libs/cpp-multipart         # <--- Add this line
 )
 
 find_package(OpenSSL REQUIRED)
