@@ -14,6 +14,60 @@
 #include <set>
 #include <iostream>
 #include "sqlite3.h"
+#include <string>
+#include <vector>
+#include <stdexcept>
+
+static const std::string base64_chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "abcdefghijklmnopqrstuvwxyz"
+    "0123456789+/";
+
+inline bool is_base64(unsigned char c) {
+    return std::isalnum(c) || (c == '+') || (c == '/');
+}
+
+std::vector<unsigned char> decode_base64(const std::string& encoded_string) {
+    int in_len = encoded_string.size();
+    int i = 0;
+    int in_ = 0;
+    unsigned char char_array_4[4], char_array_3[3];
+    std::vector<unsigned char> ret;
+
+    while (in_len-- && (encoded_string[in_] != '=') && is_base64(encoded_string[in_])) {
+        char_array_4[i++] = encoded_string[in_]; in_++;
+        if (i ==4) {
+            for (i = 0; i < 4; i++)
+                char_array_4[i] = base64_chars.find(char_array_4[i]) & 0xff;
+
+            char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+            char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+            char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+            for (i = 0; i < 3; i++)
+                ret.push_back(char_array_3[i]);
+
+            i = 0;
+        }
+    }
+
+    if (i) {
+        for (int j = i; j < 4; j++)
+            char_array_4[j] = 0;
+
+        for (int j = 0; j < 4; j++)
+            char_array_4[j] = base64_chars.find(char_array_4[j]) & 0xff;
+
+        char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+        char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+        char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+        for (int j = 0; j < i - 1; j++)
+            ret.push_back(char_array_3[j]);
+    }
+
+    return ret;
+}
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -376,27 +430,14 @@ int main() {
         }
     });
 
-    CROW_ROUTE(app, "/insert_row").methods("POST"_method)([](const crow::request& req) {
+    CROW_ROUTE(app, "/insert_row").methods("POST"_method)(
+    [](const crow::request& req) {
         try {
             auto body = json::parse(req.body);
             std::string user_id = body["user_id"];
             std::string db_file = body["db_file"];
             std::string table = body["table"];
             json row = body["row"];
-
-            std::string sql = "INSERT INTO " + table + " (";
-            std::string values = "VALUES (";
-            bool first = true;
-            for (auto it = row.begin(); it != row.end(); ++it) {
-                if (!first) {
-                    sql += ", ";
-                    values += ", ";
-                }
-                sql += it.key();
-                values += "'" + it.value().get<std::string>() + "'";
-                first = false;
-            }
-            sql += ") " + values + ")";
 
             json err;
             sqlite3* db = open_db(get_db_path(user_id, db_file), err);
@@ -405,22 +446,66 @@ int main() {
                 return crow::response(500, err.dump());
             }
 
-            char* errMsg = nullptr;
-            int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
+            std::string sql = "INSERT INTO " + table + " (";
+            std::string placeholders = "VALUES (";
+            std::vector<std::string> keys;
+            bool first = true;
+            for (auto it = row.begin(); it != row.end(); ++it) {
+                if (!first) {
+                    sql += ", ";
+                    placeholders += ", ";
+                }
+                sql += it.key();
+                placeholders += "?";
+                keys.push_back(it.key());
+                first = false;
+            }
+            sql += ") " + placeholders + ")";
+
+            sqlite3_stmt* stmt = nullptr;
+            if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+                std::string msg = sqlite3_errmsg(db);
+                sqlite3_close(db);
+                return error_resp("Prepare failed: " + msg);
+            }
+
+            int idx = 1;
+            for (const auto& key : keys) {
+                const auto& val = row[key];
+                if (val.is_string() && val.get<std::string>().substr(0, 7) == "base64:") {
+                    std::string b64 = val.get<std::string>().substr(7);
+                    std::vector<unsigned char> blob = decode_base64(b64);
+                    sqlite3_bind_blob(stmt, idx++, blob.data(), blob.size(), SQLITE_TRANSIENT);
+                } else if (val.is_number_integer()) {
+                    sqlite3_bind_int(stmt, idx++, val.get<int>());
+                } else if (val.is_number_float()) {
+                    sqlite3_bind_double(stmt, idx++, val.get<double>());
+                } else if (val.is_null()) {
+                    sqlite3_bind_null(stmt, idx++);
+                } else {
+                    sqlite3_bind_text(stmt, idx++, val.get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
+                }
+            }
+
+            int rc = sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
             sqlite3_close(db);
 
-            if (rc != SQLITE_OK) {
-                std::string msg = errMsg ? errMsg : "SQL error";
+            if (rc != SQLITE_DONE) {
                 log_status(user_id, db_file, "/insert_row", 500, {{"table", table}});
-                return error_resp(msg);
+                return error_resp("Insert failed: " + std::string(sqlite3_errstr(rc)));
             }
 
             log_status(user_id, db_file, "/insert_row", 200, {{"table", table}});
             return crow::response(R"({"success":true})");
+
+        } catch (const std::exception& e) {
+            return error_resp(std::string("Exception: ") + e.what(), 400);
         } catch (...) {
             return error_resp("Invalid JSON or request", 400);
         }
-    });
+    }
+);
 
     CROW_ROUTE(app, "/db/insert_row_file").methods("POST"_method)([](const crow::request& req) {
         auto& ctx = crow::multipart::get_multipart_context(req);
