@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
+#include "crow/multipart.h"
 
 static const std::string base64_chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -510,6 +511,66 @@ int main() {
     }
   }
 );
+
+CROW_ROUTE(app, "/db/insert_row_file").methods("POST"_method)
+([](const crow::request& req){
+    try {
+        // Parse multipart/form-data
+        auto mp = crow::multipart::request(req);
+
+        // REQUIRED FIELDS: user_id, db_file, table, column, file
+        std::string user_id = mp.get_part("user_id").body;
+        std::string db_file = mp.get_part("db_file").body;
+        std::string table   = mp.get_part("table").body;
+        std::string column  = mp.get_part("column").body;
+        auto& file_part     = mp.get_part("file");
+
+        if (user_id.empty() || db_file.empty() || table.empty() || column.empty() || !file_part.is_file()) {
+            return error_resp("Missing one or more required fields", 400);
+        }
+
+        // File as binary
+        const char* file_data = file_part.body.data();
+        size_t file_size = file_part.body.size();
+
+        // Insert row with file as blob, all other columns NULL
+        std::string sql = "INSERT INTO \"" + table + "\" (\"" + column + "\") VALUES (?)";
+
+        json err;
+        sqlite3* db = open_db(get_db_path(user_id, db_file), err);
+        if (!db) return crow::response(500, err.dump());
+
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+            std::string msg = sqlite3_errmsg(db);
+            sqlite3_close(db);
+            return error_resp("SQL prepare error: " + msg);
+        }
+
+        // Bind blob
+        if (sqlite3_bind_blob(stmt, 1, file_data, static_cast<int>(file_size), SQLITE_TRANSIENT) != SQLITE_OK) {
+            std::string msg = sqlite3_errmsg(db);
+            sqlite3_finalize(stmt);
+            sqlite3_close(db);
+            return error_resp("Blob bind error: " + msg);
+        }
+
+        int rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+
+        if (rc != SQLITE_DONE) {
+            return error_resp("Insert failed (db error)", 500);
+        }
+
+        return crow::response(R"({"success":true})");
+
+    } catch (const std::exception& e) {
+        return error_resp(std::string("Exception: ") + e.what(), 400);
+    } catch (...) {
+        return error_resp("Unknown error", 500);
+    }
+});
 
 CROW_ROUTE(app, "/update_row").methods("POST"_method)([](const crow::request& req) {
     try {
