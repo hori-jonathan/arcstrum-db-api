@@ -443,7 +443,6 @@ int main() {
       std::string placeholders = "VALUES (";
       bool first = true;
       std::vector<std::string> columns;
-      std::vector<sqlite3_stmt*> stmts;
 
       // Build SQL parts
       for (auto it = row.begin(); it != row.end(); ++it) {
@@ -477,11 +476,10 @@ int main() {
       for (size_t i = 0; i < columns.size(); ++i) {
         const std::string& key = columns[i];
         const json& val = row[key];
-        if (val.is_string() && val.get<std::string>().rfind("data:application/octet-stream;base64,", 0) == 0) {
-          // Base64-encoded blob
-          std::string base64 = val.get<std::string>().substr(33); // Skip prefix
-          std::string decoded = decode_base64(base64);
-          sqlite3_bind_blob(stmt, i + 1, decoded.data(), static_cast<int>(decoded.size()), SQLITE_TRANSIENT);
+        if (val.is_string() && val.get<std::string>().rfind("base64:", 0) == 0) {
+            std::string base64 = val.get<std::string>().substr(7);
+            std::vector<unsigned char> decoded = decode_base64(base64);
+            sqlite3_bind_blob(stmt, i + 1, decoded.data(), static_cast<int>(decoded.size()), SQLITE_TRANSIENT);
         } else if (val.is_string()) {
           sqlite3_bind_text(stmt, i + 1, val.get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
         } else if (val.is_number()) {
@@ -514,8 +512,6 @@ int main() {
 );
 
     CROW_ROUTE(app, "/db/insert_row_file").methods("POST"_method)([](const crow::request& req) {
-        auto& ctx = crow::multipart::get_multipart_context(req);
-
         std::string user_id = ctx.get_part("user_id").body;
         std::string db_file = ctx.get_part("db_file").body;
         std::string table = ctx.get_part("table").body;
