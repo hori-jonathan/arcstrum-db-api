@@ -511,6 +511,87 @@ int main() {
   }
 );
 
+CROW_ROUTE(app, "/update_row").methods("POST"_method)([](const crow::request& req) {
+    try {
+        auto body = json::parse(req.body);
+        std::string user_id = body["user_id"];
+        std::string db_file = body["db_file"];
+        std::string table = body["table"];
+        json row = body["row"];
+        json where = body["where"]; // PK or identifying fields
+
+        if (row.empty() || where.empty())
+            return error_resp("Missing row or where data", 400);
+
+        std::string sql = "UPDATE " + table + " SET ";
+        bool first = true;
+        std::vector<std::string> set_keys;
+        for (auto it = row.begin(); it != row.end(); ++it) {
+            if (!first) sql += ", ";
+            sql += it.key() + " = ?";
+            set_keys.push_back(it.key());
+            first = false;
+        }
+        sql += " WHERE ";
+        first = true;
+        std::vector<std::string> where_keys;
+        for (auto it = where.begin(); it != where.end(); ++it) {
+            if (!first) sql += " AND ";
+            sql += it.key() + " = ?";
+            where_keys.push_back(it.key());
+            first = false;
+        }
+
+        json err;
+        sqlite3* db = open_db(get_db_path(user_id, db_file), err);
+        if (!db) return crow::response(500, err.dump());
+
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+            std::string msg = sqlite3_errmsg(db);
+            sqlite3_close(db);
+            return error_resp("Prepare failed: " + msg);
+        }
+
+        int idx = 1;
+        for (const auto& key : set_keys) {
+            const auto& val = row[key];
+            if (val.is_number_integer())
+                sqlite3_bind_int(stmt, idx++, val.get<int>());
+            else if (val.is_number_float())
+                sqlite3_bind_double(stmt, idx++, val.get<double>());
+            else if (val.is_null())
+                sqlite3_bind_null(stmt, idx++);
+            else
+                sqlite3_bind_text(stmt, idx++, val.get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
+        }
+        for (const auto& key : where_keys) {
+            const auto& val = where[key];
+            if (val.is_number_integer())
+                sqlite3_bind_int(stmt, idx++, val.get<int>());
+            else if (val.is_number_float())
+                sqlite3_bind_double(stmt, idx++, val.get<double>());
+            else if (val.is_null())
+                sqlite3_bind_null(stmt, idx++);
+            else
+                sqlite3_bind_text(stmt, idx++, val.get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
+        }
+
+        int rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+
+        if (rc != SQLITE_DONE)
+            return error_resp("Update failed");
+
+        return crow::response(R"({"success":true})");
+    } catch (const std::exception& e) {
+        return error_resp(std::string("Exception: ") + e.what(), 400);
+    } catch (...) {
+        return error_resp("Invalid JSON or unknown error", 400);
+    }
+});
+
     CROW_ROUTE(app, "/rename_db").methods("POST"_method)([](const crow::request& req) {
         try {
             auto body = json::parse(req.body);
