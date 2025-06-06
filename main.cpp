@@ -511,48 +511,6 @@ int main() {
   }
 );
 
-    CROW_ROUTE(app, "/db/insert_row_file").methods("POST"_method)([](const crow::request& req) {
-        std::string user_id = ctx.get_part("user_id").body;
-        std::string db_file = ctx.get_part("db_file").body;
-        std::string table = ctx.get_part("table").body;
-
-        // Extract fields
-        json row_data;
-        for (auto& part : ctx.parts) {
-            if (part.name.find("fields[") == 0) {
-                std::string key = part.name.substr(7, part.name.size() - 8);  // fields[key]
-                row_data[key] = part.body;
-            }
-        }
-
-        // Handle files
-        for (auto& part : ctx.parts) {
-            if (part.name.find("files[") == 0) {
-                std::string key = part.name.substr(6, part.name.size() - 7);  // files[key]
-                std::string filename = part.filename;
-                if (filename.empty()) continue;
-
-                std::string upload_path = "/srv/uploads/";
-                std::string unique_name = std::to_string(std::time(nullptr)) + "_" + filename;
-                std::string full_path = upload_path + unique_name;
-
-                std::ofstream out(full_path, std::ios::binary);
-                out.write(part.body.data(), part.body.size());
-                out.close();
-
-                row_data[key] = full_path;
-            }
-        }
-
-        // Call existing database insertion logic
-        try {
-            insert_row_into_db(user_id, db_file, table, row_data);
-            return crow::response(200, R"({"status":"ok"})");
-        } catch (const std::exception& e) {
-            return crow::response(500, std::string("Failed to insert row: ") + e.what());
-        }
-    });
-
     CROW_ROUTE(app, "/rename_db").methods("POST"_method)([](const crow::request& req) {
         try {
             auto body = json::parse(req.body);
