@@ -17,7 +17,6 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
-#include "multipart_parser.h"
 #include <map>
 
 static const std::string base64_chars =
@@ -521,67 +520,85 @@ int main() {
 CROW_ROUTE(app, "/db/insert_row_file").methods("POST"_method)
 ([](const crow::request& req) {
     try {
-        std::string content_type = req.get_header_value("Content-Type");
-        size_t pos = content_type.find("boundary=");
-        if (pos == std::string::npos) return error_resp("Missing boundary in Content-Type", 400);
-        std::string boundary = "--" + content_type.substr(pos + 9);
+        // Parse the body as JSON
+        auto body = json::parse(req.body);
 
-        // Parse body with cpp-multipart
-        multipart_parser parser(boundary);
-        std::map<std::string, std::vector<uint8_t>> files;
-        std::map<std::string, std::string> fields;
-        std::string cur_name, cur_filename, cur_type;
-        std::vector<uint8_t> cur_file;
+        // Expected fields in JSON body:
+        // {
+        //   "user_id": "string",
+        //   "db_file": "string",
+        //   "table": "string",
+        //   "row": {
+        //     "col1": "value",              // for TEXT/INT/etc
+        //     "blob_col": "base64:..."      // for BLOB, as base64 string
+        //   }
+        // }
 
-        parser.on_part_begin = [&](const multipart_parser::part_headers& h) {
-            cur_name = h.at("name");
-            auto it = h.find("filename");
-            cur_filename = (it != h.end()) ? it->second : "";
-            cur_file.clear();
-        };
+        std::string user_id = body.value("user_id", "");
+        std::string db_file = body.value("db_file", "");
+        std::string table = body.value("table", "");
+        json row = body["row"];
 
-        parser.on_part_data = [&](const void* data, size_t size) {
-            if (!cur_filename.empty()) {
-                const uint8_t* bytes = (const uint8_t*)data;
-                cur_file.insert(cur_file.end(), bytes, bytes + size);
+        if (user_id.empty() || db_file.empty() || table.empty() || row.empty()) {
+            return error_resp("Missing required fields", 400);
+        }
+
+        // Build SQL query
+        std::string sql = "INSERT INTO " + table + " (";
+        std::string placeholders = "VALUES (";
+        bool first = true;
+        std::vector<std::string> columns;
+
+        for (auto it = row.begin(); it != row.end(); ++it) {
+            if (!first) {
+                sql += ", ";
+                placeholders += ", ";
+            }
+            sql += it.key();
+            placeholders += "?";
+            columns.push_back(it.key());
+            first = false;
+        }
+        sql += ") " + placeholders + ")";
+
+        json err;
+        sqlite3* db = open_db(get_db_path(user_id, db_file), err);
+        if (!db) return crow::response(500, err.dump());
+
+        sqlite3_stmt* stmt;
+        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+            std::string msg = sqlite3_errmsg(db);
+            sqlite3_close(db);
+            return error_resp("SQL prepare error: " + msg);
+        }
+
+        // Bind parameters
+        for (size_t i = 0; i < columns.size(); ++i) {
+            const std::string& key = columns[i];
+            const json& val = row[key];
+            if (val.is_string() && val.get<std::string>().rfind("base64:", 0) == 0) {
+                // This is a base64 blob
+                std::string base64 = val.get<std::string>().substr(7);
+                std::vector<unsigned char> decoded = decode_base64(base64);
+                sqlite3_bind_blob(stmt, i + 1, decoded.data(), static_cast<int>(decoded.size()), SQLITE_TRANSIENT);
+            } else if (val.is_string()) {
+                sqlite3_bind_text(stmt, i + 1, val.get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
+            } else if (val.is_number()) {
+                sqlite3_bind_double(stmt, i + 1, val.get<double>());
+            } else if (val.is_null()) {
+                sqlite3_bind_null(stmt, i + 1);
             } else {
-                fields[cur_name].append((const char*)data, size);
-            }
-        };
-
-        parser.on_part_end = [&]() {
-            if (!cur_filename.empty()) {
-                files[cur_name] = cur_file;
-            }
-        };
-
-        parser.feed(req.body.c_str(), req.body.size());
-        parser.finalize();
-
-        // Now you have "fields" (text) and "files" (binary)
-        std::string user_id = fields["user_id"];
-        std::string db_file = fields["db_file"];
-        std::string table = fields["table"];
-        // Non-blob columns: fields["fields[column_name]"]
-        // Blob columns: files["files[column_name]"]
-
-        // Compose row json to pass to your existing SQL logic
-        json row;
-        for (const auto& f : fields) {
-            if (f.first.find("fields[") == 0) {
-                std::string col = f.first.substr(7, f.first.size() - 8); // "fields[column]" -> "column"
-                row[col] = f.second;
-            }
-        }
-        for (const auto& f : files) {
-            if (f.first.find("files[") == 0) {
-                std::string col = f.first.substr(6, f.first.size() - 7); // "files[column]" -> "column"
-                row[col] = json::binary_t(f.second); // nlohmann::json binary type
+                sqlite3_bind_text(stmt, i + 1, val.dump().c_str(), -1, SQLITE_TRANSIENT);
             }
         }
 
-        // Use your regular insert logic (update it to accept json::binary_t for blobs)
-        // ... insert row as before ...
+        int rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+
+        if (rc != SQLITE_DONE) {
+            return error_resp("Insert failed");
+        }
 
         return crow::response(R"({"success":true})");
     } catch (const std::exception& e) {
