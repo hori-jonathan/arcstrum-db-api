@@ -431,80 +431,86 @@ int main() {
     });
 
     CROW_ROUTE(app, "/insert_row").methods("POST"_method)(
-    [](const crow::request& req) {
-        try {
-            auto body = json::parse(req.body);
-            std::string user_id = body["user_id"];
-            std::string db_file = body["db_file"];
-            std::string table = body["table"];
-            json row = body["row"];
+  [](const crow::request& req) {
+    try {
+      auto body = json::parse(req.body);
+      std::string user_id = body["user_id"];
+      std::string db_file = body["db_file"];
+      std::string table = body["table"];
+      json row = body["row"];
 
-            json err;
-            sqlite3* db = open_db(get_db_path(user_id, db_file), err);
-            if (!db) {
-                log_status(user_id, db_file, "/insert_row", 500, {{"table", table}});
-                return crow::response(500, err.dump());
-            }
+      std::string sql = "INSERT INTO " + table + " (";
+      std::string placeholders = "VALUES (";
+      bool first = true;
+      std::vector<std::string> columns;
+      std::vector<sqlite3_stmt*> stmts;
 
-            std::string sql = "INSERT INTO " + table + " (";
-            std::string placeholders = "VALUES (";
-            std::vector<std::string> keys;
-            bool first = true;
-            for (auto it = row.begin(); it != row.end(); ++it) {
-                if (!first) {
-                    sql += ", ";
-                    placeholders += ", ";
-                }
-                sql += it.key();
-                placeholders += "?";
-                keys.push_back(it.key());
-                first = false;
-            }
-            sql += ") " + placeholders + ")";
-
-            sqlite3_stmt* stmt = nullptr;
-            if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-                std::string msg = sqlite3_errmsg(db);
-                sqlite3_close(db);
-                return error_resp("Prepare failed: " + msg);
-            }
-
-            int idx = 1;
-            for (const auto& key : keys) {
-                const auto& val = row[key];
-                if (val.is_string() && val.get<std::string>().substr(0, 7) == "base64:") {
-                    std::string b64 = val.get<std::string>().substr(7);
-                    std::vector<unsigned char> blob = decode_base64(b64);
-                    sqlite3_bind_blob(stmt, idx++, blob.data(), blob.size(), SQLITE_TRANSIENT);
-                } else if (val.is_number_integer()) {
-                    sqlite3_bind_int(stmt, idx++, val.get<int>());
-                } else if (val.is_number_float()) {
-                    sqlite3_bind_double(stmt, idx++, val.get<double>());
-                } else if (val.is_null()) {
-                    sqlite3_bind_null(stmt, idx++);
-                } else {
-                    sqlite3_bind_text(stmt, idx++, val.get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
-                }
-            }
-
-            int rc = sqlite3_step(stmt);
-            sqlite3_finalize(stmt);
-            sqlite3_close(db);
-
-            if (rc != SQLITE_DONE) {
-                log_status(user_id, db_file, "/insert_row", 500, {{"table", table}});
-                return error_resp("Insert failed: " + std::string(sqlite3_errstr(rc)));
-            }
-
-            log_status(user_id, db_file, "/insert_row", 200, {{"table", table}});
-            return crow::response(R"({"success":true})");
-
-        } catch (const std::exception& e) {
-            return error_resp(std::string("Exception: ") + e.what(), 400);
-        } catch (...) {
-            return error_resp("Invalid JSON or request", 400);
+      // Build SQL parts
+      for (auto it = row.begin(); it != row.end(); ++it) {
+        if (!first) {
+          sql += ", ";
+          placeholders += ", ";
         }
+        sql += it.key();
+        placeholders += "?";
+        columns.push_back(it.key());
+        first = false;
+      }
+
+      sql += ") " + placeholders + ")";
+
+      json err;
+      sqlite3* db = open_db(get_db_path(user_id, db_file), err);
+      if (!db) {
+        log_status(user_id, db_file, "/insert_row", 500, {{"table", table}});
+        return crow::response(500, err.dump());
+      }
+
+      sqlite3_stmt* stmt;
+      if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        std::string msg = sqlite3_errmsg(db);
+        sqlite3_close(db);
+        return error_resp("SQL prepare error: " + msg);
+      }
+
+      // Bind parameters
+      for (size_t i = 0; i < columns.size(); ++i) {
+        const std::string& key = columns[i];
+        const json& val = row[key];
+        if (val.is_string() && val.get<std::string>().rfind("data:application/octet-stream;base64,", 0) == 0) {
+          // Base64-encoded blob
+          std::string base64 = val.get<std::string>().substr(33); // Skip prefix
+          std::string decoded = decode_base64(base64);
+          sqlite3_bind_blob(stmt, i + 1, decoded.data(), static_cast<int>(decoded.size()), SQLITE_TRANSIENT);
+        } else if (val.is_string()) {
+          sqlite3_bind_text(stmt, i + 1, val.get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
+        } else if (val.is_number()) {
+          sqlite3_bind_double(stmt, i + 1, val.get<double>());
+        } else if (val.is_null()) {
+          sqlite3_bind_null(stmt, i + 1);
+        } else {
+          sqlite3_bind_text(stmt, i + 1, val.dump().c_str(), -1, SQLITE_TRANSIENT);
+        }
+      }
+
+      int rc = sqlite3_step(stmt);
+      sqlite3_finalize(stmt);
+      sqlite3_close(db);
+
+      if (rc != SQLITE_DONE) {
+        log_status(user_id, db_file, "/insert_row", 500, {{"table", table}});
+        return error_resp("Insert failed");
+      }
+
+      log_status(user_id, db_file, "/insert_row", 200, {{"table", table}});
+      return crow::response(R"({"success":true})");
+
+    } catch (const std::exception& e) {
+      return error_resp(std::string("Exception: ") + e.what(), 400);
+    } catch (...) {
+      return error_resp("Invalid JSON or unknown error", 400);
     }
+  }
 );
 
     CROW_ROUTE(app, "/db/insert_row_file").methods("POST"_method)([](const crow::request& req) {
