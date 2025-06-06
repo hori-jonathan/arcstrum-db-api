@@ -8,15 +8,18 @@ add_subdirectory(libs/crow)
 
 add_executable(db-api main.cpp)
 
-target_sources(db-api PRIVATE libs/sqlite/sqlite3.c) # Compile sqlite directly
+target_sources(db-api PRIVATE
+    libs/sqlite/sqlite3.c
+    libs/multipart-parser/multipart_parser.c
+)
 
 target_include_directories(db-api PRIVATE
     libs/crow/include
     libs/json/single_include
     libs/asio/asio/include
     libs/sqlite
+    libs/multipart-parser         # <-- add this line
     extern/jwt-cpp/include
-    libs/cpp-multipart         # <--- Add this line
 )
 
 find_package(OpenSSL REQUIRED)
