@@ -517,7 +517,7 @@ int main() {
   }
 );
 
-CROW_ROUTE(app, "/db/insert_row_file").methods("POST"_method)
+CROW_ROUTE(app, "/insert_row_file").methods("POST"_method)
 ([](const crow::request& req) {
     try {
         // Parse the body as JSON
