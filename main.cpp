@@ -478,21 +478,23 @@ int main() {
         return error_resp("SQL prepare error: " + msg);
       }
 
-      // Bind parameters
+      // Bind parameters (media_url is just treated as TEXT)
       for (size_t i = 0; i < columns.size(); ++i) {
         const std::string& key = columns[i];
         const json& val = row[key];
         if (val.is_string() && val.get<std::string>().rfind("base64:", 0) == 0) {
-            std::string base64 = val.get<std::string>().substr(7);
-            std::vector<unsigned char> decoded = decode_base64(base64);
-            sqlite3_bind_blob(stmt, i + 1, decoded.data(), static_cast<int>(decoded.size()), SQLITE_TRANSIENT);
+          std::string base64 = val.get<std::string>().substr(7);
+          std::vector<unsigned char> decoded = decode_base64(base64);
+          sqlite3_bind_blob(stmt, i + 1, decoded.data(), static_cast<int>(decoded.size()), SQLITE_TRANSIENT);
         } else if (val.is_string()) {
+          // Plain string or URL
           sqlite3_bind_text(stmt, i + 1, val.get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
         } else if (val.is_number()) {
           sqlite3_bind_double(stmt, i + 1, val.get<double>());
         } else if (val.is_null()) {
           sqlite3_bind_null(stmt, i + 1);
         } else {
+          // Any other JSON type as string
           sqlite3_bind_text(stmt, i + 1, val.dump().c_str(), -1, SQLITE_TRANSIENT);
         }
       }
@@ -562,14 +564,21 @@ CROW_ROUTE(app, "/update_row").methods("POST"_method)([](const crow::request& re
         int idx = 1;
         for (const auto& key : set_keys) {
             const auto& val = row[key];
-            if (val.is_number_integer())
-                sqlite3_bind_int(stmt, idx++, val.get<int>());
-            else if (val.is_number_float())
-                sqlite3_bind_double(stmt, idx++, val.get<double>());
-            else if (val.is_null())
-                sqlite3_bind_null(stmt, idx++);
-            else
+            if (val.is_string() && val.get<std::string>().rfind("base64:", 0) == 0) {
+                std::string base64 = val.get<std::string>().substr(7);
+                std::vector<unsigned char> decoded = decode_base64(base64);
+                sqlite3_bind_blob(stmt, idx++, decoded.data(), static_cast<int>(decoded.size()), SQLITE_TRANSIENT);
+            } else if (val.is_string()) {
                 sqlite3_bind_text(stmt, idx++, val.get<std::string>().c_str(), -1, SQLITE_TRANSIENT);
+            } else if (val.is_number_integer()) {
+                sqlite3_bind_int(stmt, idx++, val.get<int>());
+            } else if (val.is_number_float()) {
+                sqlite3_bind_double(stmt, idx++, val.get<double>());
+            } else if (val.is_null()) {
+                sqlite3_bind_null(stmt, idx++);
+            } else {
+                sqlite3_bind_text(stmt, idx++, val.dump().c_str(), -1, SQLITE_TRANSIENT);
+            }
         }
         for (const auto& key : where_keys) {
             const auto& val = where[key];
