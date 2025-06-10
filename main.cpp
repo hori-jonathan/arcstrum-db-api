@@ -222,7 +222,7 @@ std::string base_dir(const std::string& auth_id) {
 
 // ======== Helpers ========
 std::string get_db_path(const std::string& user_id, const std::string& db_file) {
-    std::string dir = "db_root/" + user_id;
+    std::string dir = "serverdata/databases/" + user_id;
     fs::create_directories(dir);
     return dir + "/" + db_file;
 }
@@ -271,7 +271,7 @@ long long get_last_modified_safe(const fs::path& path) {
 }
 
 std::string get_meta_path(const std::string& user_id, const std::string& db_file) {
-    return "db_root/" + user_id + "/" + db_file + ".meta.json";
+    return "serverdata/databases/" + user_id + "/" + db_file + ".meta.json";
 }
 
 void log_status(
@@ -319,7 +319,7 @@ int main() {
             std::string user_id = body.value("user_id", "");
             if (user_id.empty()) return error_resp("Missing user_id");
 
-            std::string dir = "db_root/" + user_id;
+            std::string dir = "serverdata/databases/" + user_id;
             std::vector<std::string> files;
 
             // Add this block:
@@ -387,7 +387,7 @@ int main() {
             if (user_id.empty() || db_file.empty()) return error_resp("Missing user_id or db_file");
 
             std::string path = get_db_path(user_id, db_file);
-            fs::create_directories("db_root/" + user_id);
+            fs::create_directories("serverdata/databases/" + user_id);
 
             std::ofstream new_db(path);
             if (!new_db) return error_resp("Failed to create DB file", 500);
@@ -614,7 +614,7 @@ CROW_ROUTE(app, "/update_row").methods("POST"_method)([](const crow::request& re
             std::string old_name = body["old_name"];
             std::string new_name = body["new_name"];
 
-            std::string dir = "db_root/" + user_id;
+            std::string dir = "serverdata/databases/" + user_id;
             fs::create_directories(dir);
             std::string old_path = dir + "/" + old_name;
             std::string new_path = dir + "/" + new_name;
@@ -1092,7 +1092,7 @@ CROW_ROUTE(app, "/update_row").methods("POST"_method)([](const crow::request& re
             json metadata = body["metadata"];
 
             std::string meta_path = get_meta_path(user_id, db_file);
-            fs::create_directories("db_root/" + user_id);
+            fs::create_directories("serverdata/databases/" + user_id);
 
             std::ofstream out(meta_path);
             if (!out) return error_resp("Failed to write metadata", 500);
