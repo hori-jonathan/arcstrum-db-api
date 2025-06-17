@@ -168,17 +168,22 @@ const std::string SECRET = "arcstrum_secret_key";
 
 // ============ HELPERS ============
 
-unsigned short get_port_from_file(const std::string& path, unsigned short default_port = 4300) {
+unsigned short get_port_from_file(const std::string& path, const std::string& service, unsigned short default_port) {
     std::ifstream file(path);
-    unsigned short port = default_port;
-    if (file) {
-        std::string s;
-        std::getline(file, s);
-        try {
-            port = static_cast<unsigned short>(std::stoi(s));
-        } catch (...) {}
+    if (!file) return default_port;
+    std::string line;
+    while (std::getline(file, line)) {
+        // Remove whitespace
+        line.erase(std::remove_if(line.begin(), line.end(), ::isspace), line.end());
+        // Look for "service:port"
+        if (line.rfind(service + ":", 0) == 0) { // starts with service:
+            std::string port_str = line.substr(service.size() + 1);
+            try {
+                return static_cast<unsigned short>(std::stoi(port_str));
+            } catch (...) {}
+        }
     }
-    return port;
+    return default_port;
 }
 
 std::string rand_id(size_t len = 16) {
@@ -1137,7 +1142,7 @@ CROW_ROUTE(app, "/update_row").methods("POST"_method)([](const crow::request& re
         }
     });
 
-    unsigned short port = get_port_from_file("port.txt", 4000); // fallback to 4000 if file missing
+    unsigned short port = get_port_from_file("port.txt", "db", 4000); // fallback to 4000 if file missing
     std::cout << "[INFO] Using port: " << port << std::endl;
 
     return app.port(port).multithreaded().bindaddr("0.0.0.0").run(), 0;
