@@ -168,6 +168,19 @@ const std::string SECRET = "arcstrum_secret_key";
 
 // ============ HELPERS ============
 
+unsigned short get_port_from_file(const std::string& path, unsigned short default_port = 4300) {
+    std::ifstream file(path);
+    unsigned short port = default_port;
+    if (file) {
+        std::string s;
+        std::getline(file, s);
+        try {
+            port = static_cast<unsigned short>(std::stoi(s));
+        } catch (...) {}
+    }
+    return port;
+}
+
 std::string rand_id(size_t len = 16) {
     static const char chars[] = "abcdefghijklmnopqrstuvwxyz0123456789";
     static thread_local std::mt19937 gen{std::random_device{}()};
@@ -1124,6 +1137,9 @@ CROW_ROUTE(app, "/update_row").methods("POST"_method)([](const crow::request& re
         }
     });
 
-    return app.port(4000).multithreaded().run(), 0;
+    unsigned short port = get_port_from_file("port.txt", 4000); // fallback to 4000 if file missing
+    std::cout << "[INFO] Using port: " << port << std::endl;
+
+    return app.port(port).multithreaded().bindaddr("0.0.0.0").run(), 0;
 }
 
